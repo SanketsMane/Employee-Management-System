@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => ({
   define: {
     'process.env.VITE_API_URL': JSON.stringify(
       mode === 'production' 
-        ? 'https://your-vercel-app.vercel.app/api'
+        ? 'https://ems-formonex-app.vercel.app/api'
         : 'http://localhost:3002/api'
     )
   },

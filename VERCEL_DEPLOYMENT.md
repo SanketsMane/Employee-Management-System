@@ -62,7 +62,7 @@ Make sure these files are properly configured:
    JWT_SECRET=your-super-secure-jwt-secret-change-this
    JWT_EXPIRES_IN=7d
    NODE_ENV=production
-   FRONTEND_URL=https://your-app-name.vercel.app
+   FRONTEND_URL=https://ems-formonex-app.vercel.app
    MAX_FILE_SIZE=5242880
    ```
 
@@ -116,7 +116,7 @@ VITE_API_URL=https://ems-formonex-abc123.vercel.app/api
 
 **In Vercel Environment Variables, update:**
 ```
-FRONTEND_URL=https://ems-formonex-abc123.vercel.app
+FRONTEND_URL=https://ems-formonex-app.vercel.app
 ```
 
 ### 2. Redeploy with Updated URLs

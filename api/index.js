@@ -62,6 +62,7 @@ const corsOptions = {
       'http://127.0.0.1:5174',
       'http://127.0.0.1:5175',
       process.env.FRONTEND_URL,
+      'https://ems-formonex-app.vercel.app',
       /^https:\/\/.*\.vercel\.app$/, // Allow all Vercel preview deployments
       /^https:\/\/ems-formonex.*\.vercel\.app$/ // Your specific app
     ].filter(Boolean);
