@@ -116,6 +116,10 @@ async function connectToDatabase() {
       
       cachedConnection = connection;
       console.log('✅ Connected to MongoDB Atlas');
+      
+      // Auto-create admin user if it doesn't exist
+      await createAdminUserIfNeeded();
+      
       return connection;
     } else {
       console.log('⚠️  No MongoDB URI provided');
@@ -124,6 +128,38 @@ async function connectToDatabase() {
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
     return null;
+  }
+}
+
+// Auto-create admin user function
+async function createAdminUserIfNeeded() {
+  try {
+    // Import User model
+    const User = (await import('../backend_old_unused/models/User.js')).default;
+    
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: 'admin@formonex.com' });
+    
+    if (!existingAdmin) {
+      // Create admin user
+      const adminUser = new User({
+        email: 'admin@formonex.com',
+        password: 'Formo#Admin123',
+        fullName: 'Formonex Admin',
+        role: 'admin',
+        department: 'Administration',
+        position: 'System Administrator',
+        isActive: true
+      });
+
+      await adminUser.save();
+      console.log('✅ Admin user created successfully!');
+      console.log('Admin credentials: admin@formonex.com / Formo#Admin123');
+    } else {
+      console.log('✅ Admin user already exists');
+    }
+  } catch (error) {
+    console.error('⚠️  Error creating admin user:', error.message);
   }
 }
 
@@ -148,72 +184,6 @@ app.use('/api/shift', shiftSettingsRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/admin/employee', employeeShiftsRoutes);
 app.use('/api/worksheet', worksheetRoutes);
-
-// Create admin user endpoint (one-time setup)
-app.post('/api/create-admin', async (req, res) => {
-  try {
-    // Import User model
-    const User = (await import('../backend_old_unused/models/User.js')).default;
-    
-    // Ensure database connection
-    await connectToDatabase();
-    
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'admin@formonex.com' });
-    if (existingAdmin) {
-      return res.status(200).json({
-        success: true,
-        message: 'Admin user already exists',
-        data: {
-          user: {
-            id: existingAdmin._id,
-            email: existingAdmin.email,
-            fullName: existingAdmin.fullName,
-            role: existingAdmin.role,
-            department: existingAdmin.department,
-            position: existingAdmin.position
-          }
-        }
-      });
-    }
-
-    // Create admin user
-    const adminUser = new User({
-      email: 'admin@formonex.com',
-      password: 'Formo#Admin123',
-      fullName: 'Formonex Admin',
-      role: 'admin',
-      department: 'Administration',
-      position: 'System Administrator',
-      isActive: true
-    });
-
-    await adminUser.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Admin user created successfully!',
-      data: {
-        user: {
-          id: adminUser._id,
-          email: adminUser.email,
-          fullName: adminUser.fullName,
-          role: adminUser.role,
-          department: adminUser.department,
-          position: adminUser.position
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Admin creation error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create admin user',
-      error: error.message
-    });
-  }
-});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
