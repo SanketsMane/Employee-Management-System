@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --mode development",
-    "build": "vite build --mode production",
+    "build": "vite build --mode production && mkdir -p public && cp -r build/* public/ || true",
     "build:dev": "vite build --mode development",
-    "vercel-build": "npm run build && mkdir -p public && cp -r build/* public/",
     "lint": "eslint .",
     "preview": "vite preview",
     "preview:dist": "vite preview --port 5000",
