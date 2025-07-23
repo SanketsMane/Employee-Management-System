@@ -31,11 +31,5 @@
     "api/index.js": {
       "runtime": "nodejs18.x"
     }
-  },
-  "env": {
-    "MONGODB_URI": "mongodb+srv://contactsanket1:7Zkn5fLWWMCWTAhP@cluster0.if3q29s.mongodb.net/ems-formonex?retryWrites=true&w=majority&appName=Cluster0",
-    "JWT_SECRET": "your-super-secret-jwt-key-change-this-in-production",
-    "JWT_EXPIRES_IN": "7d",
-    "NODE_ENV": "production"
   }
 }
