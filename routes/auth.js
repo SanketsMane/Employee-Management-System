@@ -2,64 +2,16 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import User from '../backend_old_unused/models/User.js';
+import { logUserActivity } from '../backend_old_unused/middleware/activityLogger.js';
 
 const router = express.Router();
 
 // Generate JWT token
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET || 'your-secret-key-here', {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+  return jwt.sign({ userId }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN
   });
 };
-
-// Create admin user (for initial setup)
-router.post('/create-admin', async (req, res) => {
-  try {
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'admin@formonex.com' });
-    if (existingAdmin) {
-      return res.status(400).json({
-        success: false,
-        message: 'Admin user already exists'
-      });
-    }
-
-    // Create admin user
-    const adminUser = new User({
-      email: 'admin@formonex.com',
-      password: 'Formo#Admin123',
-      fullName: 'Formonex Admin',
-      role: 'admin',
-      department: 'Administration',
-      position: 'System Administrator'
-    });
-
-    await adminUser.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Admin user created successfully',
-      data: {
-        user: {
-          id: adminUser._id,
-          email: adminUser.email,
-          fullName: adminUser.fullName,
-          role: adminUser.role,
-          department: adminUser.department,
-          position: adminUser.position
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Admin creation error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create admin user',
-      error: error.message
-    });
-  }
-});
 
 // Register new user
 router.post('/register', [
@@ -178,6 +130,20 @@ router.post('/login', [
     
     if (!isPasswordValid) {
       console.log('Invalid password for user:', email);
+      
+      // Log failed login attempt
+      await logUserActivity(
+        user._id,
+        'login',
+        `Failed login attempt`,
+        'error',
+        `Invalid password from ${req.ip || 'unknown IP'}`,
+        {
+          ip: req.ip || req.connection.remoteAddress,
+          userAgent: req.get('User-Agent')
+        }
+      );
+      
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -191,6 +157,19 @@ router.post('/login', [
     user.lastLogin = new Date();
     user.isOnline = true;
     await user.save();
+
+    // Log successful login activity
+    await logUserActivity(
+      user._id,
+      'login',
+      `User logged in successfully`,
+      'success',
+      `Login from ${req.ip || 'unknown IP'}`,
+      {
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.get('User-Agent')
+      }
+    );
 
     res.status(200).json({
       success: true,
@@ -226,8 +205,23 @@ router.post('/logout', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-here');
-      await User.findByIdAndUpdate(decoded.userId, { isOnline: false });
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findByIdAndUpdate(decoded.userId, { isOnline: false });
+      
+      // Log logout activity
+      if (user) {
+        await logUserActivity(
+          decoded.userId,
+          'logout',
+          `User logged out`,
+          'success',
+          `Logout from ${req.ip || 'unknown IP'}`,
+          {
+            ip: req.ip || req.connection.remoteAddress,
+            userAgent: req.get('User-Agent')
+          }
+        );
+      }
     }
 
     res.status(200).json({
@@ -253,7 +247,7 @@ router.get('/me', async (req, res) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-here');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
     
     if (!user) {
