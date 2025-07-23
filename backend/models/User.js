@@ -99,6 +99,11 @@ const userSchema = new mongoose.Schema({
   refreshToken: {
     type: String,
     select: false
+  },
+  preferences: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: new Map()
   }
 }, {
   timestamps: true

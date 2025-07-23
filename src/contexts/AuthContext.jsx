@@ -104,8 +104,7 @@ export const AuthProvider = ({ children }) => {
   const updateUserProfile = (updatedProfile) => {
     setUser(updatedProfile);
     setUserProfile(updatedProfile);
-    // Update local storage as well
-    localStorage.setItem('ems_user', JSON.stringify(updatedProfile));
+    // Profile is now managed by MongoDB backend, no localStorage needed
   };
 
   // Check if user has specific permission

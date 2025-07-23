@@ -28,22 +28,59 @@ import FormonexSplashScreen from './components/FormonexSplashScreen';
 import { useAuth } from './contexts/AuthContext';
 import { useState, useEffect } from 'react';
 
+import { userPreferences } from './services/userPreferences.js';
+
 function AppContent() {
   const { loading, isAuthenticated } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
+  const [splashLoading, setSplashLoading] = useState(true);
 
   useEffect(() => {
-    // Show splash screen for first-time users or on app load
-    const hasSeenSplash = localStorage.getItem('formonex-splash-seen');
-    if (hasSeenSplash) {
-      setShowSplash(false);
-    }
+    // Check splash screen preference from MongoDB
+    const checkSplashPreference = async () => {
+      try {
+        // First check localStorage for backward compatibility
+        const localHasSeenSplash = localStorage.getItem('formonex-splash-seen');
+        
+        if (localHasSeenSplash) {
+          // Migrate to MongoDB and remove from localStorage
+          await userPreferences.setPreference('formonex-splash-seen', true);
+          localStorage.removeItem('formonex-splash-seen');
+          setShowSplash(false);
+        } else {
+          // Check MongoDB
+          const hasSeenSplash = await userPreferences.getPreference('formonex-splash-seen', false);
+          setShowSplash(!hasSeenSplash);
+        }
+      } catch (error) {
+        console.warn('Failed to check splash preference, showing splash:', error);
+        setShowSplash(true);
+      } finally {
+        setSplashLoading(false);
+      }
+    };
+
+    checkSplashPreference();
   }, []);
 
-  const handleSplashComplete = () => {
-    localStorage.setItem('formonex-splash-seen', 'true');
+  const handleSplashComplete = async () => {
+    try {
+      await userPreferences.setPreference('formonex-splash-seen', true);
+    } catch (error) {
+      console.warn('Failed to save splash preference:', error);
+      // Fallback to localStorage if MongoDB fails
+      localStorage.setItem('formonex-splash-seen', 'true');
+    }
     setShowSplash(false);
   };
+
+  if (splashLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-violet-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600"></div>
+      </div>
+    );
+  }
 
   if (showSplash) {
     return <FormonexSplashScreen onComplete={handleSplashComplete} />;

@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb+srv://contactsanket1:7Zkn5fLWWMCWTAhP@cluster0.if3q29s.mongodb.net/ems-formonex-prod?retryWrites=true&w=majority&appName=Cluster0
+      - JWT_SECRET=your-super-secure-production-jwt-key-change-this-for-security
+      - JWT_EXPIRES_IN=7d
+      - FRONTEND_URL=http://localhost
+      - MAX_FILE_SIZE=5242880
+    volumes:
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  uploads:

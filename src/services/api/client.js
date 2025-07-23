@@ -1,8 +1,7 @@
 // API Configuration
 export const API_CONFIG = {
-  // For now, we'll use a simple local storage based solution
-  // Later this can be updated to point to the actual backend
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api',
+  // Updated to use the MongoDB backend server
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3002/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
