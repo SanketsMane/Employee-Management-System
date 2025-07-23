@@ -1,433 +1,681 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Link } from 'react-router-dom';
-import DatabaseService from '../services/databaseService';
+import { dashboardAPI } from '../services/api/dashboard';
+import { apiClient } from '../services/api/client';
+import toast from 'react-hot-toast';
+import AttendanceCalendar from '../components/AttendanceCalendar';
+import Chat from '../components/Chat';
 import {
   ChartBarIcon,
   ClockIcon,
   CheckCircleIcon,
-  CalendarDaysIcon,
-  BellIcon,
-  ChatBubbleLeftRightIcon,
   AcademicCapIcon,
+  ChatBubbleLeftRightIcon,
+  ClipboardDocumentListIcon,
+  CalendarDaysIcon,
+  PlayIcon,
+  StopIcon,
+  PauseIcon,
+  BellIcon,
+  ExclamationTriangleIcon,
+  ArrowTrendingUpIcon,
   UserGroupIcon,
+  DocumentTextIcon,
+  EyeIcon,
+  CalendarIcon,
+  BookOpenIcon,
+  SparklesIcon,
+  FireIcon,
   TrophyIcon,
-  ArrowRightIcon
+  XMarkIcon
 } from '@heroicons/react/24/outline';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { format, subDays, isToday } from 'date-fns';
-import toast from 'react-hot-toast';
 
 export default function EmployeeDashboard() {
-  const { user, userProfile, useFirebase } = useAuth();
-  
-  // State management
-  const [employeeStats, setEmployeeStats] = useState({
-    attendanceRate: 0,
-    completedTasks: 0,
-    pendingTasks: 0,
-    totalHours: 0,
-    todayHours: 0,
-    enrolledCourses: 0,
-    completedCourses: 0,
-    certificates: 0
-  });
-  
+  const { user, userProfile } = useAuth();
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [dashboardData, setDashboardData] = useState(null);
   const [attendanceStatus, setAttendanceStatus] = useState({
-    isOnline: false,
-    clockInTime: null
+    hasCheckedIn: false,
+    hasCheckedOut: false,
+    onBreak: false,
+    attendance: null,
+    shiftInfo: null
   });
-  
-  const [recentActivities, setRecentActivities] = useState([]);
-  const [upcomingTasks, setUpcomingTasks] = useState([]);
-  const [attendanceData, setAttendanceData] = useState([]);
-  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [shiftSettings, setShiftSettings] = useState(null);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [leaveData, setLeaveData] = useState({ monthlyLeaves: 0, warningMessage: null });
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceHistory, setAttendanceHistory] = useState([]);
 
   useEffect(() => {
-    loadDashboardData();
-  }, [user?.uid, useFirebase]);
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
 
-  const loadDashboardData = async () => {
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+    fetchTodayAttendance();
+    fetchShiftSettings();
+    fetchRecentActivities();
+    fetchLeaveData();
+  }, []);
+
+  const fetchLeaveData = async () => {
+    try {
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      
+      const response = await apiClient.get(`/leaves/my-leaves?year=${currentYear}`);
+      if (response.success) {
+        const monthlyLeaves = response.data.filter(leave => {
+          const leaveDate = new Date(leave.startDate);
+          return leaveDate.getMonth() + 1 === currentMonth && leave.status === 'approved';
+        }).length;
+        
+        let warningMessage = null;
+        if (monthlyLeaves >= 4) {
+          warningMessage = "You've used most of your monthly leaves. Please plan your time off carefully to maintain productivity.";
+        } else if (monthlyLeaves === 3) {
+          warningMessage = "You have taken 3 leaves this month. Consider managing your remaining leaves wisely.";
+        }
+        
+        setLeaveData({ monthlyLeaves, warningMessage });
+      }
+    } catch (error) {
+      console.error('Error fetching leave data:', error);
+      setLeaveData({ monthlyLeaves: 0, warningMessage: null });
+    }
+  };
+
+  const fetchAttendanceHistory = async () => {
+    try {
+      const response = await apiClient.get('/attendance/history?limit=30');
+      if (response.success) {
+        setAttendanceHistory(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching attendance history:', error);
+      setAttendanceHistory([]);
+    }
+  };
+
+  const fetchRecentActivities = async () => {
+    try {
+      const response = await apiClient.get('/activities/my-activities?limit=5');
+      const activities = response.data || [];
+      
+      const validatedActivities = activities.filter(activity => 
+        activity && (activity.description || activity.activityType)
+      );
+      
+      setRecentActivities(validatedActivities);
+    } catch (error) {
+      console.error('Error fetching recent activities:', error);
+      setRecentActivities([]);
+    }
+  };
+
+  const getActivityIcon = (activityType) => {
+    if (!activityType) {
+      return { icon: ClockIcon, color: 'bg-gray-100 text-gray-600' };
+    }
+    
+    const iconMap = {
+      'login': { icon: ClockIcon, color: 'bg-green-100 text-green-600' },
+      'logout': { icon: ClockIcon, color: 'bg-red-100 text-red-600' },
+      'attendance_check_in': { icon: PlayIcon, color: 'bg-blue-100 text-blue-600' },
+      'attendance_check_out': { icon: StopIcon, color: 'bg-red-100 text-red-600' },
+      'task_creation': { icon: ClipboardDocumentListIcon, color: 'bg-purple-100 text-purple-600' },
+      'task_completion': { icon: CheckCircleIcon, color: 'bg-green-100 text-green-600' },
+      'leave_application': { icon: CalendarDaysIcon, color: 'bg-yellow-100 text-yellow-600' },
+      'profile_update': { icon: ChartBarIcon, color: 'bg-indigo-100 text-indigo-600' },
+      'project_access': { icon: ChatBubbleLeftRightIcon, color: 'bg-orange-100 text-orange-600' }
+    };
+    
+    return iconMap[activityType] || { icon: ClockIcon, color: 'bg-gray-100 text-gray-600' };
+  };
+
+  const formatActivityTime = (timestamp) => {
+    if (!timestamp) {
+      return 'Unknown time';
+    }
+    
+    try {
+      const now = new Date();
+      const activityTime = new Date(timestamp);
+      
+      if (isNaN(activityTime.getTime())) {
+        return 'Invalid date';
+      }
+      
+      const diffInHours = Math.floor((now - activityTime) / (1000 * 60 * 60));
+      const diffInDays = Math.floor(diffInHours / 24);
+      
+      if (diffInHours < 1) {
+        const diffInMinutes = Math.floor((now - activityTime) / (1000 * 60));
+        return diffInMinutes < 1 ? 'Just now' : `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
+      } else if (diffInHours < 24) {
+        return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+      } else if (diffInDays < 7) {
+        return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+      } else {
+        return activityTime.toLocaleDateString();
+      }
+    } catch (error) {
+      console.error('Error formatting activity time:', error);
+      return 'Unknown time';
+    }
+  };
+
+  const fetchShiftSettings = async () => {
+    try {
+      const response = await apiClient.get('/shift/settings');
+      setShiftSettings(response.data);
+    } catch (error) {
+      console.error('Failed to fetch shift settings:', error);
+    }
+  };
+
+  const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
-      if (useFirebase && user?.uid) {
-        // Load real data from Firebase
-        const [tasks, attendance, learningProgress, activities] = await Promise.all([
-          DatabaseService.list(DatabaseService.COLLECTIONS.TASKS, {
-            where: [{ field: 'assignedTo', operator: '==', value: user.uid }]
-          }),
-          DatabaseService.list(DatabaseService.COLLECTIONS.ATTENDANCE, {
-            where: [{ field: 'employeeId', operator: '==', value: user.uid }]
-          }),
-          DatabaseService.list(DatabaseService.COLLECTIONS.LEARNING_PROGRESS, {
-            where: [{ field: 'employeeId', operator: '==', value: user.uid }]
-          }),
-          DatabaseService.list(DatabaseService.COLLECTIONS.ACTIVITIES, {
-            where: [{ field: 'employeeId', operator: '==', value: user.uid }],
-            orderBy: [{ field: 'timestamp', direction: 'desc' }],
-            limit: 10
-          })
-        ]);
-
-        // Process stats
-        const completedTasks = tasks.filter(task => task.status === 'completed').length;
-        const pendingTasks = tasks.filter(task => task.status === 'pending').length;
-        
-        const totalHours = attendance.reduce((sum, record) => sum + (record.hoursWorked || 0), 0);
-        const todayAttendance = attendance.find(record => isToday(new Date(record.date)));
-        const todayHours = todayAttendance?.hoursWorked || 0;
-        
-        const attendanceRate = Math.round((attendance.filter(record => record.isPresent).length / Math.max(attendance.length, 1)) * 100);
-        
-        const enrolledCourses = learningProgress.length;
-        const completedCourses = learningProgress.filter(progress => progress.completionPercentage === 100).length;
-
-        setEmployeeStats({
-          attendanceRate,
-          completedTasks,
-          pendingTasks,
-          totalHours: Math.round(totalHours),
-          todayHours: Math.round(todayHours * 10) / 10,
-          enrolledCourses,
-          completedCourses,
-          certificates: completedCourses
-        });
-
-        setRecentActivities(activities);
-        setUpcomingTasks(tasks.filter(task => task.status === 'pending').slice(0, 5));
-        
-        // Generate attendance chart data
-        const chartData = [];
-        for (let i = 6; i >= 0; i--) {
-          const date = subDays(new Date(), i);
-          const dayRecord = attendance.find(record => 
-            format(new Date(record.date), 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd')
-          );
-          chartData.push({
-            day: format(date, 'EEE'),
-            hours: dayRecord?.hoursWorked || 0,
-            present: dayRecord?.isPresent ? 1 : 0
-          });
-        }
-        setAttendanceData(chartData);
-
-        // Check current clock-in status
-        const clockInData = localStorage.getItem(`clockIn_${user.uid}`);
-        if (clockInData) {
-          const { clockInTime } = JSON.parse(clockInData);
-          setAttendanceStatus({
-            isOnline: true,
-            clockInTime: new Date(clockInTime)
-          });
-        }
-
-      } else {
-        // Demo data
-        setEmployeeStats({
-          attendanceRate: 92,
-          completedTasks: 28,
-          pendingTasks: 7,
-          totalHours: 156,
-          todayHours: 6.5,
-          enrolledCourses: 4,
-          completedCourses: 2,
-          certificates: 2
-        });
-
-        setRecentActivities([
-          { id: 1, action: 'Completed task: Website Design Review', timestamp: new Date(), type: 'task' },
-          { id: 2, action: 'Clocked in for today', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), type: 'attendance' },
-          { id: 3, action: 'Started course: React Advanced Concepts', timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000), type: 'learning' },
-        ]);
-
-        setUpcomingTasks([
-          { id: 1, title: 'Prepare monthly report', dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), priority: 'high' },
-          { id: 2, title: 'Review team proposals', dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), priority: 'medium' },
-          { id: 3, title: 'Update project documentation', dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), priority: 'low' },
-        ]);
-
-        const chartData = [];
-        for (let i = 6; i >= 0; i--) {
-          const date = subDays(new Date(), i);
-          chartData.push({
-            day: format(date, 'EEE'),
-            hours: Math.random() * 8 + 2,
-            present: Math.random() > 0.1 ? 1 : 0
-          });
-        }
-        setAttendanceData(chartData);
-      }
-
-      setNotifications([
-        { id: 1, title: 'New task assigned', message: 'You have a new task assigned for this week', type: 'info' },
-        { id: 2, title: 'Course deadline approaching', message: 'Complete React course by Friday', type: 'warning' }
-      ]);
-
+      const result = await dashboardAPI.getDashboardData();
+      setDashboardData(result.data);
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Failed to fetch dashboard data:', error);
       toast.error('Failed to load dashboard data');
+      setDashboardData({
+        stats: {
+          attendance: { present: 0, total: 1, percentage: 0 },
+          tasks: { completed: 0, total: 0, pending: 0, inProgress: 0 },
+          learning: { progress: 0 }
+        },
+        recentTasks: [],
+        recentAttendance: []
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const quickActions = [
-    {
-      title: 'Clock In/Out',
-      description: 'Manage your attendance',
-      icon: ClockIcon,
-      link: '/attendance',
-      color: 'bg-blue-500',
-      bgColor: 'bg-blue-50'
-    },
-    {
-      title: 'View Tasks',
-      description: 'Check your assigned tasks',
-      icon: CheckCircleIcon,
-      link: '/tasks',
-      color: 'bg-green-500',
-      bgColor: 'bg-green-50'
-    },
-    {
-      title: 'Team Chat',
-      description: 'Connect with your team',
-      icon: ChatBubbleLeftRightIcon,
-      link: '/chat',
-      color: 'bg-purple-500',
-      bgColor: 'bg-purple-50'
-    },
-    {
-      title: 'Learning Hub',
-      description: 'Continue your courses',
-      icon: AcademicCapIcon,
-      link: '/learning',
-      color: 'bg-orange-500',
-      bgColor: 'bg-orange-50'
+  const fetchTodayAttendance = async () => {
+    try {
+      const response = await apiClient.get('/attendance/today');
+      if (response.success) {
+        setAttendanceStatus(response.data);
+      } else {
+        setAttendanceStatus(response);
+      }
+    } catch (error) {
+      console.error('Failed to fetch today attendance:', error);
     }
-  ];
+  };
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
+  const handleCheckIn = async () => {
+    try {
+      setActionLoading(true);
+      const response = await apiClient.post('/attendance/checkin', {
+        location: {
+          latitude: null,
+          longitude: null,
+          address: 'Office Location'
+        }
+      });
+      
+      if (response.success) {
+        toast.success(response.message);
+        if (response.shiftInfo?.isLate) {
+          toast.warning('You are marked as late for today', { duration: 4000 });
+        }
+        setAttendanceStatus(prev => ({
+          ...prev,
+          shiftInfo: response.shiftInfo
+        }));
+        fetchTodayAttendance();
+        fetchDashboardData();
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to check in');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    if (!attendanceStatus.hasCheckedIn) {
+      toast.error('Please check in first');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const response = await apiClient.post('/attendance/checkout');
+      
+      if (response.success) {
+        toast.success(response.message);
+        fetchTodayAttendance();
+        fetchDashboardData();
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to check out');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBreak = async () => {
+    if (!attendanceStatus.hasCheckedIn) {
+      toast.error('Please check in first');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const endpoint = attendanceStatus.onBreak ? '/attendance/end-break' : '/attendance/start-break';
+      const response = await apiClient.post(endpoint);
+      
+      if (response.success) {
+        toast.success(response.message);
+        fetchTodayAttendance();
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to update break status');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const stats = dashboardData ? [
+    {
+      title: 'Attendance This Month',
+      value: `${dashboardData.stats.attendance.present}/${dashboardData.stats.attendance.total}`,
+      icon: CalendarDaysIcon,
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-100',
+      percentage: `${dashboardData.stats.attendance.percentage}%`
+    },
+    {
+      title: 'Tasks Completed',
+      value: `${dashboardData.stats.tasks.completed}/${dashboardData.stats.tasks.total}`,
+      icon: CheckCircleIcon,
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-100',
+      pending: dashboardData.stats.tasks.pending,
+      inProgress: dashboardData.stats.tasks.inProgress
+    },
+    {
+      title: 'Learning Progress',
+      value: `${dashboardData.stats.learning.progress}%`,
+      icon: AcademicCapIcon,
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-100',
+    },
+  ] : [];
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
+        <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm p-8 rounded-2xl shadow-xl border border-white/20 dark:border-gray-700/20">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600 mx-auto"></div>
+          <p className="mt-4 text-gray-700 dark:text-gray-300 font-medium">Loading your workspace...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Welcome back, {userProfile?.displayName || 'Employee'}! 👋
-          </h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-2">
-            Here's your dashboard overview for {format(new Date(), 'EEEE, MMMM do, yyyy')}
-          </p>
-          {attendanceStatus.isOnline && (
-            <div className="mt-4 flex items-center text-green-600 dark:text-green-400">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-              You're currently clocked in since {format(attendanceStatus.clockInTime, 'h:mm a')}
-            </div>
-          )}
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Attendance Rate</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.attendanceRate}%</p>
-              </div>
-              <div className="p-3 bg-blue-500/10 rounded-lg">
-                <CalendarDaysIcon className="h-8 w-8 text-blue-500" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Completed Tasks</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.completedTasks}</p>
-              </div>
-              <div className="p-3 bg-green-500/10 rounded-lg">
-                <CheckCircleIcon className="h-8 w-8 text-green-500" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Hours Today</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.todayHours}h</p>
-              </div>
-              <div className="p-3 bg-purple-500/10 rounded-lg">
-                <ClockIcon className="h-8 w-8 text-purple-500" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Courses Enrolled</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.enrolledCourses}</p>
-              </div>
-              <div className="p-3 bg-orange-500/10 rounded-lg">
-                <AcademicCapIcon className="h-8 w-8 text-orange-500" />
-              </div>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Navigation Tabs */}
+      <div className="bg-white/80 dark:bg-gray-900/70 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'dashboard'
+                  ? 'border-violet-500 text-violet-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <SparklesIcon className="w-5 h-5 inline mr-2" />
+              Dashboard
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('attendance');
+                fetchAttendanceHistory();
+              }}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'attendance'
+                  ? 'border-violet-500 text-violet-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <CalendarIcon className="w-5 h-5 inline mr-2" />
+              Attendance
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'chat'
+                  ? 'border-violet-500 text-violet-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <ChatBubbleLeftRightIcon className="w-5 h-5 inline mr-2" />
+              Team Chat
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Quick Actions */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {quickActions.map((action, index) => (
-              <Link
-                key={index}
-                to={action.link}
-                className="group bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all duration-200 hover:-translate-y-1"
-              >
-                <div className={`p-3 ${action.bgColor} dark:bg-gray-700 rounded-lg mb-4 w-fit`}>
-                  <action.icon className={`h-6 w-6 ${action.color.replace('bg-', 'text-')}`} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Dashboard Tab */}
+        {activeTab === 'dashboard' && (
+          <>
+            {/* Header */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                    Hello, {userProfile?.fullName?.split(' ')[0] || 'there'}! 👋
+                  </h1>
+                  <p className="text-gray-600 text-lg">
+                    {currentTime.toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
+                  <p className="text-violet-600 font-semibold text-xl">
+                    {currentTime.toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
                 </div>
-                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  {action.title}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{action.description}</p>
-                <div className="flex items-center mt-3 text-blue-600 dark:text-blue-400 text-sm font-medium">
-                  Go to {action.title.toLowerCase()}
-                  <ArrowRightIcon className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Charts and Activities */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Attendance Chart */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Weekly Attendance</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={attendanceData}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="day" className="text-gray-600 dark:text-gray-400" />
-                  <YAxis className="text-gray-600 dark:text-gray-400" />
-                  <Tooltip 
-                    contentStyle={{
-                      backgroundColor: 'rgb(31 41 55)',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: 'white'
-                    }}
-                  />
-                  <Bar dataKey="hours" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Recent Activities */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Recent Activities</h3>
-            <div className="space-y-4">
-              {recentActivities.map((activity, index) => (
-                <div key={activity.id} className="flex items-start space-x-3">
-                  <div className={`p-2 rounded-full ${
-                    activity.type === 'task' ? 'bg-green-100 text-green-600' :
-                    activity.type === 'attendance' ? 'bg-blue-100 text-blue-600' :
-                    'bg-orange-100 text-orange-600'
-                  }`}>
-                    {activity.type === 'task' && <CheckCircleIcon className="h-4 w-4" />}
-                    {activity.type === 'attendance' && <ClockIcon className="h-4 w-4" />}
-                    {activity.type === 'learning' && <AcademicCapIcon className="h-4 w-4" />}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-900 dark:text-white">{activity.action}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {format(new Date(activity.timestamp), 'h:mm a')}
-                    </p>
+                <div className="hidden md:block">
+                  <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white p-6 rounded-2xl shadow-lg">
+                    <div className="flex items-center">
+                      <TrophyIcon className="w-8 h-8 mr-3" />
+                      <div>
+                        <div className="text-sm opacity-90">Your Rank</div>
+                        <div className="text-2xl font-bold">Top Performer</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              ))}
-              {recentActivities.length === 0 && (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-4">No recent activities</p>
+              </div>
+              
+              {/* Leave Warning */}
+              {leaveData.warningMessage && (
+                <div className="mt-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
+                  <div className="flex items-center">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-amber-400 mr-3" />
+                    <div>
+                      <p className="text-amber-800 font-medium">Leave Management Notice</p>
+                      <p className="text-amber-700 text-sm mt-1">{leaveData.warningMessage}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Shift Timing Info */}
+              {shiftSettings && (
+                <div className="mt-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <ClockIcon className="h-6 w-6 text-blue-600 mr-3" />
+                      <div>
+                        <span className="text-blue-800 font-semibold text-lg">
+                          Today's Shift: {shiftSettings.shiftStart} - {shiftSettings.shiftEnd}
+                        </span>
+                        <p className="text-blue-600 text-sm mt-1">Your dedicated work hours</p>
+                      </div>
+                    </div>
+                    {attendanceStatus.shiftInfo && (
+                      <div className="flex items-center space-x-3">
+                        {attendanceStatus.shiftInfo.isLate && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-800">
+                            <FireIcon className="w-4 h-4 mr-1" />
+                            Late
+                          </span>
+                        )}
+                        {attendanceStatus.shiftInfo.isHalfDay && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-800">
+                            Half Day
+                          </span>
+                        )}
+                        {attendanceStatus.shiftInfo.status === 'present' && !attendanceStatus.shiftInfo.isLate && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                            <CheckCircleIcon className="w-4 h-4 mr-1" />
+                            On Time
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Upcoming Tasks and Notifications */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Upcoming Tasks */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upcoming Tasks</h3>
-              <Link to="/tasks" className="text-blue-600 dark:text-blue-400 text-sm font-medium hover:underline">
-                View all
-              </Link>
-            </div>
-            <div className="space-y-3">
-              {upcomingTasks.map((task, index) => (
-                <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{task.title}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Due: {format(new Date(task.dueDate), 'MMM dd, yyyy')}
-                    </p>
+            {/* Modern Attendance Controls */}
+            <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm rounded-2xl shadow-xl border border-white/30 dark:border-gray-700/30 p-8 mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                <ClockIcon className="w-6 h-6 mr-3 text-violet-600" />
+                Today's Attendance
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <button
+                  onClick={handleCheckIn}
+                  disabled={attendanceStatus.hasCheckedIn || actionLoading}
+                  className={`relative overflow-hidden rounded-xl p-6 transition-all duration-300 transform hover:scale-105 ${
+                    attendanceStatus.hasCheckedIn
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg hover:shadow-xl'
+                  }`}
+                >
+                  <div className="flex items-center justify-center">
+                    <PlayIcon className="w-8 h-8 mr-3" />
+                    <div className="text-left">
+                      <div className="font-bold text-lg">Check In</div>
+                      <div className="text-sm opacity-90">Start your day</div>
+                    </div>
                   </div>
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    task.priority === 'high' ? 'bg-red-100 text-red-800' :
-                    task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {task.priority}
-                  </span>
+                  {attendanceStatus.hasCheckedIn && (
+                    <div className="absolute inset-0 bg-white/20 flex items-center justify-center">
+                      <CheckCircleIcon className="w-12 h-12 text-green-600" />
+                    </div>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleBreak}
+                  disabled={!attendanceStatus.hasCheckedIn || attendanceStatus.hasCheckedOut || actionLoading}
+                  className={`relative overflow-hidden rounded-xl p-6 transition-all duration-300 transform hover:scale-105 ${
+                    !attendanceStatus.hasCheckedIn || attendanceStatus.hasCheckedOut
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : attendanceStatus.onBreak
+                      ? 'bg-gradient-to-r from-blue-500 to-cyan-600 text-white shadow-lg hover:shadow-xl'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg hover:shadow-xl'
+                  }`}
+                >
+                  <div className="flex items-center justify-center">
+                    <PauseIcon className="w-8 h-8 mr-3" />
+                    <div className="text-left">
+                      <div className="font-bold text-lg">
+                        {attendanceStatus.onBreak ? 'End Break' : 'Take Break'}
+                      </div>
+                      <div className="text-sm opacity-90">
+                        {attendanceStatus.onBreak ? 'Resume work' : 'Short pause'}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleCheckOut}
+                  disabled={!attendanceStatus.hasCheckedIn || attendanceStatus.hasCheckedOut || actionLoading}
+                  className={`relative overflow-hidden rounded-xl p-6 transition-all duration-300 transform hover:scale-105 ${
+                    !attendanceStatus.hasCheckedIn || attendanceStatus.hasCheckedOut
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-red-500 to-pink-600 text-white shadow-lg hover:shadow-xl'
+                  }`}
+                >
+                  <div className="flex items-center justify-center">
+                    <StopIcon className="w-8 h-8 mr-3" />
+                    <div className="text-left">
+                      <div className="font-bold text-lg">Check Out</div>
+                      <div className="text-sm opacity-90">End your day</div>
+                    </div>
+                  </div>
+                  {attendanceStatus.hasCheckedOut && (
+                    <div className="absolute inset-0 bg-white/20 flex items-center justify-center">
+                      <CheckCircleIcon className="w-12 h-12 text-red-600" />
+                    </div>
+                  )}
+                </button>
+              </div>
+
+              {/* Status Display */}
+              {(attendanceStatus.hasCheckedIn || attendanceStatus.hasCheckedOut) && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border border-violet-200">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex space-x-4">
+                      {attendanceStatus.attendance?.checkIn && (
+                        <div>
+                          <span className="text-violet-600 font-medium">Check In:</span>
+                          <span className="ml-2 text-gray-700">
+                            {new Date(attendanceStatus.attendance.checkIn).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      {attendanceStatus.attendance?.checkOut && (
+                        <div>
+                          <span className="text-violet-600 font-medium">Check Out:</span>
+                          <span className="ml-2 text-gray-700">
+                            {new Date(attendanceStatus.attendance.checkOut).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {attendanceStatus.onBreak && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-800">
+                        <PauseIcon className="w-4 h-4 mr-1" />
+                        On Break
+                      </span>
+                    )}
+                  </div>
                 </div>
-              ))}
-              {upcomingTasks.length === 0 && (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-4">No upcoming tasks</p>
               )}
             </div>
-          </div>
 
-          {/* Notifications */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Notifications</h3>
-            <div className="space-y-3">
-              {notifications.map((notification, index) => (
-                <div key={notification.id} className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className={`p-2 rounded-full ${
-                    notification.type === 'info' ? 'bg-blue-100 text-blue-600' :
-                    notification.type === 'warning' ? 'bg-yellow-100 text-yellow-600' :
-                    'bg-red-100 text-red-600'
-                  }`}>
-                    <BellIcon className="h-4 w-4" />
+            {/* Modern Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              {stats.map((stat, index) => {
+                const IconComponent = stat.icon;
+                return (
+                  <div key={index} className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm rounded-2xl shadow-xl border border-white/30 dark:border-gray-700/30 p-6 transform transition-all duration-300 hover:scale-105">
+                    <div className="flex items-center">
+                      <div className={`p-3 rounded-xl ${stat.bgColor} mr-4`}>
+                        <IconComponent className={`h-8 w-8 ${stat.color}`} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-600 mb-1">{stat.title}</p>
+                        <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                        {stat.percentage && (
+                          <p className={`text-sm font-medium ${stat.color}`}>{stat.percentage}</p>
+                        )}
+                        {(stat.pending !== undefined || stat.inProgress !== undefined) && (
+                          <div className="flex space-x-3 mt-2">
+                            {stat.pending !== undefined && (
+                              <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                                {stat.pending} pending
+                              </span>
+                            )}
+                            {stat.inProgress !== undefined && (
+                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                {stat.inProgress} in progress
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{notification.title}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{notification.message}</p>
+                );
+              })}
+            </div>
+
+            {/* Recent Activities */}
+            <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm rounded-2xl shadow-xl border border-white/30 dark:border-gray-700/30 p-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+                <ClockIcon className="w-5 h-5 mr-3 text-violet-600" />
+                Recent Activities
+              </h3>
+              <div className="space-y-4">
+                {recentActivities.length > 0 ? (
+                  recentActivities.map((activity, index) => {
+                    const { icon: ActivityIcon, color } = getActivityIcon(activity.type);
+                    return (
+                      <div key={index} className="flex items-center p-4 bg-white/50 rounded-xl border border-gray-100">
+                        <div className={`p-2 rounded-full ${color} mr-4`}>
+                          <ActivityIcon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">
+                            {activity.action || activity.description || 'Unknown activity'}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatActivityTime(activity.timestamp || activity.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8">
+                    <ClockIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">No recent activities</p>
                   </div>
-                </div>
-              ))}
-              {notifications.length === 0 && (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-4">No new notifications</p>
-              )}
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Attendance Tab */}
+        {activeTab === 'attendance' && (
+          <div className="space-y-6">
+            <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm rounded-2xl shadow-xl border border-white/30 dark:border-gray-700/30 p-6">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+                <CalendarIcon className="w-6 h-6 mr-3 text-violet-600" />
+                Attendance History
+              </h2>
+              <AttendanceCalendar />
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Chat Tab */}
+        {activeTab === 'chat' && (
+          <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm rounded-2xl shadow-xl border border-white/30 dark:border-gray-700/30 p-6">
+            <Chat />
+          </div>
+        )}
       </div>
     </div>
   );

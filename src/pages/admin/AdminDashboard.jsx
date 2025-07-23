@@ -1,28 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import Footer from '../../components/Footer';
-import DatabaseService from '../../services/databaseService';
-import { exportAttendanceToExcel, exportTaskPerformanceToExcel } from '../../services/excelService';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
+  UsersIcon, 
+  ClockIcon, 
   ChartBarIcon,
-  UsersIcon,
-  ClockIcon,
+  EyeIcon,
+  XMarkIcon,
+  CalendarDaysIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  BanknotesIcon,
+  UserGroupIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  CalendarDaysIcon,
-  BellIcon,
-  AcademicCapIcon,
-  ArrowDownTrayIcon,
-  CogIcon,
-  ShieldCheckIcon,
-  EyeIcon,
-  ChatBubbleLeftRightIcon,
-  DocumentTextIcon,
-  UserGroupIcon,
-  PlayIcon,
-  PauseIcon,
-  SunIcon,
-  MoonIcon
+  FireIcon,
+  SparklesIcon,
+  BoltIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import { 
   BarChart, 
@@ -31,764 +27,742 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  LineChart, 
+  ResponsiveContainer,
+  LineChart,
   Line,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
   Area,
-  AreaChart
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis
 } from 'recharts';
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isToday } from 'date-fns';
+import { apiClient } from '../../services/api/client';
+import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
-
-// Import all admin components
-import ManageEmployees from './ManageEmployees';
-import ManageBatches from './ManageBatches';
-import AssignBatchTask from './AssignBatchTask';
-import AssignIndividualTask from './AssignIndividualTask';
-import LearningLibrary from './LearningLibrary';
-import ExportReports from './ExportReports';
+import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function AdminDashboard() {
-  const { user, userProfile, isAdmin, useFirebase, logout } = useAuth();
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  
-  // Dashboard State
-  const [adminStats, setAdminStats] = useState({
-    totalEmployees: 0,
-    activeEmployees: 0,
-    onlineEmployees: 0,
-    totalBatches: 0,
-    activeBatches: 0,
-    pendingRequests: 0,
-    completedTasks: 0,
-    pendingTasks: 0,
-    totalLearningMaterials: 0,
-    systemAlerts: 0,
-    weeklyTaskCompletion: 0,
-    monthlyTaskCompletion: 0
-  });
-  
-  const [recentActivities, setRecentActivities] = useState([]);
-  const [employeeStatusData, setEmployeeStatusData] = useState([]);
-  const [taskCompletionData, setTaskCompletionData] = useState([]);
-  const [attendanceData, setAttendanceData] = useState([]);
-  const [absentEmployees, setAbsentEmployees] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [loading, setLoading] = useState(true);
-  
-  // Real-time data
-  const [onlineEmployeesList, setOnlineEmployeesList] = useState([]);
-  const socketRef = useRef(null);
-  const intervalRef = useRef(null);
+  const { userProfile } = useAuth();
+  const [employees, setEmployees] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [employeeLogs, setEmployeeLogs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [timeRange, setTimeRange] = useState('week');
 
+  // Load initial data
   useEffect(() => {
-    if (!isAdmin()) {
-      toast.error('Access denied. Admin privileges required.');
-      return;
+    if (userProfile?.role === 'admin') {
+      loadDashboardData();
+      loadEmployees();
     }
-    
-    initializeAdminDashboard();
-    startTimeTracking();
-    initializeRealTimeFeatures();
-    
-    return () => {
-      cleanup();
-    };
-  }, [user?.uid, useFirebase]);
+  }, [userProfile]);
 
-  const initializeAdminDashboard = async () => {
+  const loadDashboardData = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        loadAdminStats(),
-        loadRecentActivities(),
-        loadTaskCompletionData(),
-        loadAttendanceData(),
-        loadAbsentEmployees(),
-        loadNotifications()
-      ]);
+      const response = await apiClient.get('/admin/dashboard');
+      setDashboardStats(response.data || response);
     } catch (error) {
-      console.error('Error initializing admin dashboard:', error);
-      toast.error('Failed to load admin dashboard');
-      await loadDemoData();
+      console.error('Error loading dashboard data:', error);
+      toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
-  const startTimeTracking = () => {
-    intervalRef.current = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-  };
-
-  const initializeRealTimeFeatures = () => {
-    // Initialize WebSocket connection for real-time updates
-    if (typeof window !== 'undefined') {
-      // Socket.IO would be implemented here in a real application
-      console.log('Real-time features initialized');
-      
-      // Simulate real-time employee status updates
-      setInterval(() => {
-        updateOnlineEmployees();
-      }, 30000); // Update every 30 seconds
-    }
-  };
-
-  const cleanup = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
-  };
-
-  const loadAdminStats = async () => {
+  const loadEmployees = async () => {
     try {
-      if (useFirebase && user?.uid) {
-        // Load real data from Firebase
-        const [employees, batches, tasks, requests, materials] = await Promise.all([
-          DatabaseService.list(DatabaseService.COLLECTIONS.USERS, {
-            where: [{ field: 'role', operator: '==', value: 'employee' }]
-          }),
-          DatabaseService.list(DatabaseService.COLLECTIONS.BATCHES),
-          DatabaseService.list(DatabaseService.COLLECTIONS.TASKS),
-          DatabaseService.list(DatabaseService.COLLECTIONS.BATCH_REQUESTS, {
-            where: [{ field: 'status', operator: '==', value: 'pending' }]
-          }),
-          DatabaseService.list(DatabaseService.COLLECTIONS.LEARNING_MATERIALS)
-        ]);
-
-        const activeEmployees = employees.filter(emp => emp.status === 'active').length;
-        const onlineEmployees = employees.filter(emp => emp.isOnline).length;
-        const activeBatches = batches.filter(batch => batch.status === 'active').length;
-        const completedTasks = tasks.filter(task => task.status === 'completed').length;
-        const pendingTasks = tasks.filter(task => task.status === 'pending').length;
-
-        // Calculate weekly and monthly completion rates
-        const weekStart = startOfWeek(new Date());
-        const weekEnd = endOfWeek(new Date());
-        const monthStart = startOfMonth(new Date());
-        const monthEnd = endOfMonth(new Date());
-
-        const weeklyTasks = tasks.filter(task => {
-          const taskDate = new Date(task.createdAt);
-          return taskDate >= weekStart && taskDate <= weekEnd;
-        });
-        
-        const monthlyTasks = tasks.filter(task => {
-          const taskDate = new Date(task.createdAt);
-          return taskDate >= monthStart && taskDate <= monthEnd;
-        });
-
-        const weeklyCompletion = weeklyTasks.length > 0 ? 
-          Math.round((weeklyTasks.filter(t => t.status === 'completed').length / weeklyTasks.length) * 100) : 0;
-        
-        const monthlyCompletion = monthlyTasks.length > 0 ? 
-          Math.round((monthlyTasks.filter(t => t.status === 'completed').length / monthlyTasks.length) * 100) : 0;
-
-        setAdminStats({
-          totalEmployees: employees.length,
-          activeEmployees,
-          onlineEmployees,
-          totalBatches: batches.length,
-          activeBatches,
-          pendingRequests: requests.length,
-          completedTasks,
-          pendingTasks,
-          totalLearningMaterials: materials.length,
-          systemAlerts: 3, // This would be calculated based on actual system conditions
-          weeklyTaskCompletion: weeklyCompletion,
-          monthlyTaskCompletion: monthlyCompletion
-        });
-
-        setOnlineEmployeesList(employees.filter(emp => emp.isOnline));
-      } else {
-        loadDemoStats();
-      }
+      const response = await apiClient.get('/admin/employees');
+      setEmployees(response.data || response);
     } catch (error) {
-      console.error('Error loading admin stats:', error);
-      loadDemoStats();
+      console.error('Error loading employees:', error);
+      toast.error('Failed to load employees');
     }
   };
 
-  const loadDemoStats = () => {
-    setAdminStats({
-      totalEmployees: 156,
-      activeEmployees: 142,
-      onlineEmployees: 89,
-      totalBatches: 24,
-      activeBatches: 18,
-      pendingRequests: 12,
-      completedTasks: 342,
-      pendingTasks: 67,
-      totalLearningMaterials: 45,
-      systemAlerts: 3,
-      weeklyTaskCompletion: 78,
-      monthlyTaskCompletion: 82
+  const loadEmployeeLogs = async (employeeId) => {
+    setLogsLoading(true);
+    try {
+      const response = await apiClient.get(`/admin/employee/${employeeId}/logs`);
+      setEmployeeLogs(response.data || response);
+    } catch (error) {
+      console.error('Error loading employee logs:', error);
+      toast.error('Failed to load employee logs');
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const handleViewEmployee = (employee) => {
+    setSelectedEmployee(employee);
+    loadEmployeeLogs(employee._id);
+  };
+
+  const formatTime = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
-
-    setOnlineEmployeesList([
-      { id: 1, name: 'John Doe', department: 'Development', status: 'online' },
-      { id: 2, name: 'Jane Smith', department: 'Design', status: 'online' },
-      { id: 3, name: 'Mike Johnson', department: 'Marketing', status: 'online' },
-      { id: 4, name: 'Sarah Wilson', department: 'HR', status: 'online' },
-    ]);
   };
 
-  const loadRecentActivities = async () => {
-    try {
-      if (useFirebase) {
-        const activities = await DatabaseService.list(DatabaseService.COLLECTIONS.ACTIVITIES, {
-          orderBy: [{ field: 'timestamp', direction: 'desc' }],
-          limit: 10
-        });
-        setRecentActivities(activities);
-      } else {
-        setRecentActivities([
-          {
-            id: 1,
-            type: 'employee_login',
-            message: 'John Doe logged in',
-            user: 'John Doe',
-            timestamp: new Date(Date.now() - 5 * 60 * 1000),
-            action: 'Login'
-          },
-          {
-            id: 2,
-            type: 'task_completed',
-            message: 'React Tutorial task completed by Jane Smith',
-            user: 'Jane Smith',
-            timestamp: new Date(Date.now() - 15 * 60 * 1000),
-            action: 'Task Completion'
-          },
-          {
-            id: 3,
-            type: 'batch_request',
-            message: 'New batch join request from Mike Johnson',
-            user: 'Mike Johnson',
-            timestamp: new Date(Date.now() - 30 * 60 * 1000),
-            action: 'Batch Request'
-          },
-          {
-            id: 4,
-            type: 'material_uploaded',
-            message: 'New learning material uploaded: Advanced React Patterns',
-            user: 'Admin',
-            timestamp: new Date(Date.now() - 45 * 60 * 1000),
-            action: 'Upload'
-          }
-        ]);
+  const formatDuration = (minutes) => {
+    if (!minutes || minutes === 0) return '0h 0m';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+  };
+
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { 
+      opacity: 1, 
+      y: 0,
+      transition: { 
+        duration: 0.6,
+        staggerChildren: 0.1
       }
-    } catch (error) {
-      console.error('Error loading recent activities:', error);
     }
   };
 
-  const loadTaskCompletionData = () => {
-    // Generate task completion data for the last 7 days
-    const data = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      data.push({
-        day: format(date, 'EEE'),
-        completed: Math.floor(Math.random() * 30) + 20,
-        pending: Math.floor(Math.random() * 15) + 5,
-        total: Math.floor(Math.random() * 50) + 30
-      });
-    }
-    setTaskCompletionData(data);
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 }
   };
 
-  const loadAttendanceData = () => {
-    // Generate attendance data for the last 30 days
-    const data = [];
-    for (let i = 29; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      data.push({
-        date: format(date, 'MMM dd'),
-        present: Math.floor(Math.random() * 20) + 120,
-        absent: Math.floor(Math.random() * 10) + 5,
-        late: Math.floor(Math.random() * 8) + 2
-      });
-    }
-    setAttendanceData(data);
-  };
+  // Prepare chart data
+  const attendanceChartData = dashboardStats?.weeklyAttendance?.map(day => ({
+    day: day.day,
+    present: day.present,
+    late: day.late,
+    absent: day.absent
+  })) || [];
 
-  const loadAbsentEmployees = async () => {
-    try {
-      if (useFirebase) {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        const allEmployees = await DatabaseService.list(DatabaseService.COLLECTIONS.USERS, {
-          where: [{ field: 'role', operator: '==', value: 'employee' }]
-        });
-        
-        const todayAttendance = await DatabaseService.list(DatabaseService.COLLECTIONS.ATTENDANCE, {
-          where: [{ field: 'date', operator: '==', value: today }]
-        });
-        
-        const presentEmployeeIds = todayAttendance.map(att => att.employeeId);
-        const absentToday = allEmployees.filter(emp => !presentEmployeeIds.includes(emp.id));
-        
-        setAbsentEmployees(absentToday);
-      } else {
-        // Demo data for employees who didn't log in today
-        setAbsentEmployees([
-          { id: 1, name: 'Robert Brown', department: 'Finance', email: 'robert@company.com' },
-          { id: 2, name: 'Lisa Davis', department: 'Operations', email: 'lisa@company.com' },
-          { id: 3, name: 'Tom Wilson', department: 'Sales', email: 'tom@company.com' }
-        ]);
-      }
-    } catch (error) {
-      console.error('Error loading absent employees:', error);
-    }
-  };
+  const productivityChartData = dashboardStats?.topPerformers?.map(emp => ({
+    name: emp.name.split(' ')[0],
+    productivity: emp.averageProductivity
+  })) || [];
 
-  const loadNotifications = () => {
-    const mockNotifications = [
-      {
-        id: 1,
-        title: 'System Maintenance',
-        message: 'Scheduled maintenance tonight at 2 AM',
-        type: 'warning',
-        timestamp: new Date(),
-        read: false
-      },
-      {
-        id: 2,
-        title: 'New Batch Request',
-        message: '5 new batch join requests pending approval',
-        type: 'info',
-        timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        read: false
-      },
-      {
-        id: 3,
-        title: 'Task Deadline Alert',
-        message: '12 tasks are due tomorrow',
-        type: 'urgent',
-        timestamp: new Date(Date.now() - 60 * 60 * 1000),
-        read: true
-      }
-    ];
-    
-    setNotifications(mockNotifications);
-    setUnreadNotifications(mockNotifications.filter(n => !n.read).length);
-  };
-
-  const loadDemoData = async () => {
-    loadDemoStats();
-    await loadRecentActivities();
-    loadTaskCompletionData();
-    loadAttendanceData();
-    await loadAbsentEmployees();
-    loadNotifications();
-  };
-
-  const updateOnlineEmployees = () => {
-    // Simulate real-time employee status updates
-    const currentOnline = adminStats.onlineEmployees;
-    const randomChange = Math.floor(Math.random() * 6) - 3; // -3 to +3
-    const newOnlineCount = Math.max(0, Math.min(adminStats.totalEmployees, currentOnline + randomChange));
-    
-    setAdminStats(prev => ({
-      ...prev,
-      onlineEmployees: newOnlineCount
-    }));
-  };
-
-  const getGreeting = () => {
-    const hour = currentTime.getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  };
-
-  const getActivityIcon = (type) => {
-    switch (type) {
-      case 'employee_login': return <UsersIcon className="h-5 w-5 text-green-500" />;
-      case 'task_completed': return <CheckCircleIcon className="h-5 w-5 text-blue-500" />;
-      case 'batch_request': return <UserGroupIcon className="h-5 w-5 text-yellow-500" />;
-      case 'material_uploaded': return <DocumentTextIcon className="h-5 w-5 text-purple-500" />;
-      default: return <BellIcon className="h-5 w-5 text-gray-500" />;
-    }
-  };
-
-  const handleExportAttendance = async (dateRange) => {
-    try {
-      toast.loading('Generating attendance report...');
-      const { startDate, endDate } = dateRange;
-      await exportAttendanceToExcel(startDate, endDate);
-      toast.dismiss();
-      toast.success('Attendance report exported successfully!');
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Failed to export attendance report');
-      console.error('Export error:', error);
-    }
-  };
-
-  const handleExportTasks = async (dateRange, type) => {
-    try {
-      toast.loading('Generating task performance report...');
-      const { startDate, endDate } = dateRange;
-      await exportTaskPerformanceToExcel(startDate, endDate, type);
-      toast.dismiss();
-      toast.success('Task performance report exported successfully!');
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Failed to export task performance report');
-      console.error('Export error:', error);
-    }
-  };
-
-  const tabs = [
-    { id: 'dashboard', name: 'Dashboard', icon: ChartBarIcon },
-    { id: 'employees', name: 'Manage Employees', icon: UsersIcon },
-    { id: 'batches', name: 'Manage Batches', icon: UserGroupIcon },
-    { id: 'batch-tasks', name: 'Assign Batch Tasks', icon: CheckCircleIcon },
-    { id: 'individual-tasks', name: 'Individual Tasks', icon: DocumentTextIcon },
-    { id: 'learning', name: 'Learning Library', icon: AcademicCapIcon },
-    { id: 'reports', name: 'Export Reports', icon: ArrowDownTrayIcon }
+  const statusPieData = [
+    { name: 'Present', value: dashboardStats?.todayStats?.present || 0, color: '#10b981' },
+    { name: 'Late', value: dashboardStats?.todayStats?.late || 0, color: '#f59e0b' },
+    { name: 'Absent', value: dashboardStats?.todayStats?.absent || 0, color: '#ef4444' },
+    { name: 'WFH', value: dashboardStats?.todayStats?.workFromHome || 0, color: '#3b82f6' }
   ];
 
-  const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+  // Modern Stats Card Component
+  const StatsCard = ({ icon: Icon, title, value, subtitle, trend, color, bgColor, iconBg }) => (
+    <motion.div
+      variants={itemVariants}
+      className={`relative overflow-hidden rounded-2xl p-6 ${bgColor} border border-white/10 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 group`}
+      whileHover={{ scale: 1.02, y: -2 }}
+    >
+      <div className="relative z-10">
+        <div className="flex items-center justify-between">
+          <div className={`w-12 h-12 rounded-xl ${iconBg} flex items-center justify-center`}>
+            <Icon className={`w-6 h-6 ${color}`} />
+          </div>
+          {trend && (
+            <div className={`flex items-center space-x-1 ${trend > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+              {trend > 0 ? (
+                <ArrowUpIcon className="w-4 h-4" />
+              ) : (
+                <ArrowDownIcon className="w-4 h-4" />
+              )}
+              <span className="text-sm font-medium">{Math.abs(trend)}%</span>
+            </div>
+          )}
+        </div>
+        <div className="mt-4">
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</p>
+          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{value}</p>
+          {subtitle && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>
+          )}
+        </div>
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+    </motion.div>
+  );
 
-  if (loading) {
+  if (userProfile?.role !== 'admin') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center p-8 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl border border-white/20 dark:border-gray-700/20 shadow-xl"
+        >
+          <ShieldCheckIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Access Denied</h2>
+          <p className="text-gray-600 dark:text-gray-400 mt-2">You don't have permission to access this page.</p>
+        </motion.div>
       </div>
     );
   }
 
-  const renderDashboard = () => (
-    <div className="space-y-6">
-      {/* Header with Greeting and Status */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              {getGreeting()}, {userProfile?.displayName || 'Administrator'}! 👋
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              {format(currentTime, 'EEEE, MMMM do, yyyy • h:mm:ss a')}
-            </p>
-            <div className="flex items-center mt-3 space-x-4">
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse mr-2"></div>
-                <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                  System Online
-                </span>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      {/* Modern Header */}
+      <div className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col lg:flex-row lg:items-center lg:justify-between"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <div className="w-16 h-16 bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg">
+                  <ChartBarIcon className="w-8 h-8 text-white" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full animate-pulse" />
               </div>
-              <div className="flex items-center">
-                <UsersIcon className="h-4 w-4 text-blue-500 mr-1" />
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {adminStats.onlineEmployees} employees online
-                </span>
+              <div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  Admin Dashboard
+                </h1>
+                <p className="mt-1 text-gray-600 dark:text-gray-400 text-lg">
+                  Real-time insights and analytics
+                </p>
               </div>
             </div>
+            <div className="mt-4 lg:mt-0 flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {new Date().toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {new Date().toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Modern Tab Navigation */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl border border-white/20 dark:border-gray-700/20 shadow-xl mb-8"
+        >
+          <div className="p-2">
+            <nav className="flex space-x-2">
+              {[
+                { id: 'overview', label: 'Overview', icon: ChartBarIcon },
+                { id: 'employees', label: 'Team', icon: UserGroupIcon }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all duration-300 ${
+                    activeTab === tab.id
+                      ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50'
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </nav>
           </div>
-          
-          <div className="flex items-center space-x-3">
-            <div className="relative">
-              <button className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                <BellIcon className="h-6 w-6" />
-                {unreadNotifications > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {unreadNotifications}
-                  </span>
-                )}
-              </button>
-            </div>
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        </motion.div>
+
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+          {activeTab === 'overview' && (
+            <motion.div
+              key="overview"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              className="space-y-8"
             >
-              {isDarkMode ? <SunIcon className="h-6 w-6" /> : <MoonIcon className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <LoadingSpinner />
+                </div>
+              ) : dashboardStats ? (
+                <>
+                  {/* Enhanced Stats Cards */}
+                  <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <StatsCard
+                      icon={UsersIcon}
+                      title="Total Employees"
+                      value={dashboardStats.totalEmployees}
+                      subtitle="Active workforce"
+                      trend={5}
+                      color="text-blue-600"
+                      bgColor="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20"
+                      iconBg="bg-blue-100 dark:bg-blue-900/30"
+                    />
+                    <StatsCard
+                      icon={CheckCircleIcon}
+                      title="Present Today"
+                      value={dashboardStats.todayStats?.present || 0}
+                      subtitle={`${((dashboardStats.todayStats?.present || 0) / dashboardStats.totalEmployees * 100).toFixed(1)}% attendance`}
+                      trend={2}
+                      color="text-emerald-600"
+                      bgColor="bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/20 dark:to-green-900/20"
+                      iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+                    />
+                    <StatsCard
+                      icon={ClockIcon}
+                      title="Late Arrivals"
+                      value={dashboardStats.todayStats?.late || 0}
+                      subtitle="Need attention"
+                      trend={-1}
+                      color="text-amber-600"
+                      bgColor="bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-900/20 dark:to-orange-900/20"
+                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+                    />
+                    <StatsCard
+                      icon={ArrowTrendingUpIcon}
+                      title="Avg Productivity"
+                      value={`${dashboardStats.averageProductivity?.toFixed(1)}%`}
+                      subtitle="This week"
+                      trend={3}
+                      color="text-purple-600"
+                      bgColor="bg-gradient-to-br from-purple-50 to-pink-100 dark:from-purple-900/20 dark:to-pink-900/20"
+                      iconBg="bg-purple-100 dark:bg-purple-900/30"
+                    />
+                  </motion.div>
+
+                  {/* Enhanced Charts Grid */}
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                    {/* Weekly Attendance Chart */}
+                    <motion.div
+                      variants={itemVariants}
+                      className="xl:col-span-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl p-8 border border-white/20 dark:border-gray-700/20 shadow-xl"
+                    >
+                      <div className="flex items-center justify-between mb-6">
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Weekly Attendance Trends</h3>
+                          <p className="text-gray-600 dark:text-gray-400">Track daily attendance patterns</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Present</span>
+                          <div className="w-3 h-3 bg-amber-500 rounded-full ml-4"></div>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Late</span>
+                          <div className="w-3 h-3 bg-red-500 rounded-full ml-4"></div>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Absent</span>
+                        </div>
+                      </div>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={attendanceChartData}>
+                            <defs>
+                              <linearGradient id="presentGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                              </linearGradient>
+                              <linearGradient id="lateGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                              </linearGradient>
+                              <linearGradient id="absentGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8}/>
+                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+                            <XAxis dataKey="day" stroke="#6b7280" />
+                            <YAxis stroke="#6b7280" />
+                            <Tooltip 
+                              contentStyle={{
+                                backgroundColor: 'rgba(17, 24, 39, 0.8)',
+                                border: 'none',
+                                borderRadius: '12px',
+                                backdropFilter: 'blur(10px)'
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="present"
+                              stackId="1"
+                              stroke="#10b981"
+                              fill="url(#presentGradient)"
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="late"
+                              stackId="1"
+                              stroke="#f59e0b"
+                              fill="url(#lateGradient)"
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="absent"
+                              stackId="1"
+                              stroke="#ef4444"
+                              fill="url(#absentGradient)"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </motion.div>
+
+                    {/* Today's Status Distribution */}
+                    <motion.div
+                      variants={itemVariants}
+                      className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl p-8 border border-white/20 dark:border-gray-700/20 shadow-xl"
+                    >
+                      <div className="mb-6">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">Today's Status</h3>
+                        <p className="text-gray-600 dark:text-gray-400">Current attendance breakdown</p>
+                      </div>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={statusPieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={100}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {statusPieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{
+                                backgroundColor: 'rgba(17, 24, 39, 0.8)',
+                                border: 'none',
+                                borderRadius: '12px',
+                                backdropFilter: 'blur(10px)'
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        {statusPieData.map((item, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                            <span className="text-sm text-gray-600 dark:text-gray-400">{item.name}: {item.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  </div>
+
+                  {/* Enhanced Productivity Overview */}
+                  <motion.div
+                    variants={itemVariants}
+                    className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl p-8 border border-white/20 dark:border-gray-700/20 shadow-xl"
+                  >
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">Team Productivity Insights</h3>
+                        <p className="text-gray-600 dark:text-gray-400">Performance metrics and trends</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <SparklesIcon className="w-5 h-5 text-yellow-500" />
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Top Performers</span>
+                      </div>
+                    </div>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={productivityChartData}>
+                          <defs>
+                            <linearGradient id="productivityGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9}/>
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.7}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+                          <XAxis dataKey="name" stroke="#6b7280" />
+                          <YAxis stroke="#6b7280" />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(17, 24, 39, 0.8)',
+                              border: 'none',
+                              borderRadius: '12px',
+                              backdropFilter: 'blur(10px)'
+                            }}
+                          />
+                          <Bar 
+                            dataKey="productivity" 
+                            fill="url(#productivityGradient)" 
+                            radius={[8, 8, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </motion.div>
+                </>
+              ) : (
+                <motion.div 
+                  variants={itemVariants}
+                  className="text-center py-12"
+                >
+                  <ExclamationTriangleIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500 dark:text-gray-400 text-lg">No data available</p>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'employees' && (
+            <motion.div
+              key="employees"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              className="space-y-8"
+            >
+              {/* Enhanced Employee Table */}
+              <motion.div
+                variants={itemVariants}
+                className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl border border-white/20 dark:border-gray-700/20 shadow-xl overflow-hidden"
+              >
+                <div className="px-8 py-6 border-b border-gray-200 dark:border-gray-700/50">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Team Overview</h3>
+                  <p className="text-gray-600 dark:text-gray-400">Manage and monitor your team members</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-50/50 dark:bg-gray-800/50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Employee
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Department
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Productivity
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700/50">
+                      {employees.map((employee, index) => (
+                        <motion.tr 
+                          key={employee._id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors duration-200"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-3">
+                              <div className="relative">
+                                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center shadow-md">
+                                  <span className="text-sm font-bold text-white">
+                                    {employee.name?.charAt(0)}
+                                  </span>
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white"></div>
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white">{employee.name}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">{employee.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+                              {employee.department || 'Unassigned'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                              employee.todayStatus === 'present' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
+                              employee.todayStatus === 'late' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
+                              employee.todayStatus === 'absent' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                            }`}>
+                              {employee.todayStatus || 'No data'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-2">
+                              <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                <div 
+                                  className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${employee.averageProductivity || 0}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                {employee.averageProductivity?.toFixed(1) || 0}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => handleViewEmployee(employee)}
+                              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 dark:bg-violet-900/30 dark:hover:bg-violet-900/50 text-violet-700 dark:text-violet-300 rounded-lg transition-colors duration-200"
+                            >
+                              <EyeIcon className="h-4 w-4" />
+                              <span>View Logs</span>
+                            </button>
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Employees</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">{adminStats.totalEmployees}</p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-green-600 dark:text-green-400">
-                  {adminStats.activeEmployees} active
-                </span>
-                <span className="text-gray-300 dark:text-gray-600 mx-2">•</span>
-                <span className="text-sm text-blue-600 dark:text-blue-400">
-                  {adminStats.onlineEmployees} online
-                </span>
-              </div>
-            </div>
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-              <UsersIcon className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Batches</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">{adminStats.activeBatches}</p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-yellow-600 dark:text-yellow-400">
-                  {adminStats.pendingRequests} pending requests
-                </span>
-              </div>
-            </div>
-            <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-              <UserGroupIcon className="h-8 w-8 text-green-600 dark:text-green-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Task Completion</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">{adminStats.weeklyTaskCompletion}%</p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-green-600 dark:text-green-400">
-                  {adminStats.completedTasks} completed
-                </span>
-                <span className="text-gray-300 dark:text-gray-600 mx-2">•</span>
-                <span className="text-sm text-orange-600 dark:text-orange-400">
-                  {adminStats.pendingTasks} pending
-                </span>
-              </div>
-            </div>
-            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-              <CheckCircleIcon className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">System Status</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-white">{adminStats.systemAlerts}</p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-red-600 dark:text-red-400">
-                  Active alerts
-                </span>
-              </div>
-            </div>
-            <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full">
-              <ExclamationTriangleIcon className="h-8 w-8 text-red-600 dark:text-red-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Weekly Task Completion */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Weekly Task Completion</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={taskCompletionData}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="day" className="text-gray-600 dark:text-gray-400" />
-              <YAxis className="text-gray-600 dark:text-gray-400" />
-              <Tooltip 
-                contentStyle={{
-                  backgroundColor: 'rgb(31 41 55)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: 'white'
-                }}
-              />
-              <Bar dataKey="completed" fill="#10B981" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="pending" fill="#F59E0B" radius={[2, 2, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Monthly Attendance Trend */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Monthly Attendance Trend</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={attendanceData}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="date" className="text-gray-600 dark:text-gray-400" />
-              <YAxis className="text-gray-600 dark:text-gray-400" />
-              <Tooltip 
-                contentStyle={{
-                  backgroundColor: 'rgb(31 41 55)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: 'white'
-                }}
-              />
-              <Area type="monotone" dataKey="present" stackId="1" stroke="#3B82F6" fill="#3B82F6" />
-              <Area type="monotone" dataKey="late" stackId="1" stroke="#F59E0B" fill="#F59E0B" />
-              <Area type="monotone" dataKey="absent" stackId="1" stroke="#EF4444" fill="#EF4444" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Real-time Employees Status & Absent Employees Alert */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Online Employees */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Online Employees</h3>
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse mr-2"></div>
-              <span className="text-sm text-green-600 dark:text-green-400">Live</span>
-            </div>
-          </div>
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {onlineEmployeesList.map((employee) => (
-              <div key={employee.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+      {/* Enhanced Employee Logs Modal */}
+      <AnimatePresence>
+        {selectedEmployee && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm overflow-y-auto h-full w-full z-50 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative max-w-4xl mx-auto my-8 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 dark:border-gray-700/20"
+            >
+              <div className="flex items-center justify-between p-8 border-b border-gray-200 dark:border-gray-700/50">
+                <div className="flex items-center space-x-4">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center shadow-md">
+                    <span className="text-lg font-bold text-white">
+                      {selectedEmployee.name?.charAt(0)}
+                    </span>
+                  </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{employee.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{employee.department}</p>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {selectedEmployee.name}
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400">Attendance History</p>
                   </div>
                 </div>
-                <span className="text-xs text-green-600 dark:text-green-400 font-medium">Online</span>
+                <button
+                  onClick={() => setSelectedEmployee(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors duration-200"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Absent Employees Alert */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-red-200 dark:border-red-700">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Employees Not Logged In Today
-            </h3>
-            <ExclamationTriangleIcon className="h-6 w-6 text-red-500" />
-          </div>
-          <div className="space-y-3 max-h-64 overflow-y-auto">
-            {absentEmployees.map((employee) => (
-              <div key={employee.id} className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{employee.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{employee.department}</p>
-                </div>
-                <div className="flex space-x-2">
-                  <button className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded transition-colors">
-                    Contact
-                  </button>
-                </div>
+              <div className="p-8 max-h-96 overflow-y-auto">
+                {logsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <LoadingSpinner />
+                  </div>
+                ) : employeeLogs.length > 0 ? (
+                  <div className="space-y-4">
+                    {employeeLogs.map((log, index) => (
+                      <motion.div
+                        key={log._id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50 rounded-xl p-6 hover:shadow-md transition-shadow duration-200"
+                      >
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex items-center space-x-3">
+                            <CalendarDaysIcon className="h-5 w-5 text-gray-400" />
+                            <span className="font-semibold text-gray-900 dark:text-white">
+                              {new Date(log.date).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            log.status === 'present' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' :
+                            log.status === 'late' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' :
+                            log.status === 'absent' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                            'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                          <div className="space-y-1">
+                            <p className="text-gray-500 dark:text-gray-400">Check In</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{formatTime(log.checkIn)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-gray-500 dark:text-gray-400">Check Out</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{formatTime(log.checkOut)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-gray-500 dark:text-gray-400">Working Hours</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{formatDuration(log.workingHours)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-gray-500 dark:text-gray-400">Break Time</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{formatDuration(log.breakHours)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-gray-500 dark:text-gray-400">Productivity</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{log.productivityScore?.toFixed(1)}%</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-gray-500 dark:text-gray-400">Break Sessions</p>
+                            <p className="font-medium text-gray-900 dark:text-white">{log.breaks?.length || 0}</p>
+                          </div>
+                        </div>
+                        {log.notes && (
+                          <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              <strong>Notes:</strong> {log.notes}
+                            </p>
+                          </div>
+                        )}
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <CalendarDaysIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400 text-lg">No attendance logs found</p>
+                  </div>
+                )}
               </div>
-            ))}
-            {absentEmployees.length === 0 && (
-              <p className="text-center text-green-600 dark:text-green-400 py-4">
-                🎉 All employees have logged in today!
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* Recent Activities */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Activities</h3>
-          <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
-            View All
-          </button>
-        </div>
-        <div className="space-y-4">
-          {recentActivities.map((activity) => (
-            <div key={activity.id} className="flex items-start space-x-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-              <div className="flex-shrink-0 mt-1">
-                {getActivityIcon(activity.type)}
+              <div className="flex justify-end p-8 border-t border-gray-200 dark:border-gray-700/50">
+                <button
+                  onClick={() => setSelectedEmployee(null)}
+                  className="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium transition-colors duration-200"
+                >
+                  Close
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  {activity.message}
-                </p>
-                <div className="flex items-center space-x-2 mt-1">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {activity.user}
-                  </p>
-                  <span className="text-gray-300 dark:text-gray-600">•</span>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {format(activity.timestamp, 'h:mm a')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex-shrink-0">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                  {activity.action}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Navigation Tabs */}
-          <div className="mb-8">
-            <div className="border-b border-gray-200 dark:border-gray-700">
-              <nav className="-mb-px flex space-x-8 overflow-x-auto">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`whitespace-nowrap flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                        activeTab === tab.id
-                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                          : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                      <span>{tab.name}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-          </div>
-
-          {/* Tab Content */}
-          {activeTab === 'dashboard' && renderDashboard()}
-          {activeTab === 'employees' && <ManageEmployees />}
-          {activeTab === 'batches' && <ManageBatches />}
-          {activeTab === 'batch-tasks' && <AssignBatchTask />}
-          {activeTab === 'individual-tasks' && <AssignIndividualTask />}
-          {activeTab === 'learning' && <LearningLibrary />}
-          {activeTab === 'reports' && (
-            <ExportReports 
-              onExportAttendance={handleExportAttendance}
-              onExportTasks={handleExportTasks}
-            />
-          )}
-        </div>
-
-        <Footer />
-      </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

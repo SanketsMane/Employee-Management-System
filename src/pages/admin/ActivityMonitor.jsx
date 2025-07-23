@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
+import { apiClient } from '../../services/api/client';
 import Footer from '../../components/Footer';
 import {
   ClockIcon,
@@ -18,7 +20,11 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   BellIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  SparklesIcon,
+  RocketLaunchIcon,
+  CpuChipIcon,
+  SignalIcon
 } from '@heroicons/react/24/outline';
 import { format, formatDistanceToNow } from 'date-fns';
 
@@ -34,7 +40,7 @@ export default function ActivityMonitor() {
   const [showRealTime, setShowRealTime] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const activityTypes = ['all', 'login', 'logout', 'course_access', 'task_completion', 'file_upload', 'admin_action'];
+  const activityTypes = ['all', 'login', 'logout', 'task_creation', 'task_completion', 'project_access', 'attendance_check_in', 'attendance_check_out', 'leave_application', 'profile_update', 'admin_action', 'file_upload'];
   const statusTypes = ['all', 'success', 'warning', 'error', 'info'];
 
   useEffect(() => {
@@ -46,120 +52,24 @@ export default function ActivityMonitor() {
   const loadActivityData = async () => {
     setLoading(true);
     try {
-      // Mock real-time activity data
-      const mockActivities = [
-        {
-          id: 1,
-          type: 'login',
-          user: 'John Doe',
-          userId: 'user_001',
-          action: 'User logged in',
-          timestamp: new Date(Date.now() - 2 * 60 * 1000), // 2 minutes ago
-          ip: '192.168.1.100',
-          device: 'Chrome on Windows',
-          status: 'success',
-          details: 'Successful login from corporate network'
-        },
-        {
-          id: 2,
-          type: 'course_access',
-          user: 'Jane Smith',
-          userId: 'user_002',
-          action: 'Accessed React Development course',
-          timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
-          ip: '192.168.1.105',
-          device: 'Chrome on MacOS',
-          status: 'success',
-          details: 'Started Module 3: Advanced Hooks'
-        },
-        {
-          id: 3,
-          type: 'task_completion',
-          user: 'Mike Johnson',
-          userId: 'user_003',
-          action: 'Completed task: API Integration',
-          timestamp: new Date(Date.now() - 10 * 60 * 1000), // 10 minutes ago
-          ip: '192.168.1.110',
-          device: 'Edge on Windows',
-          status: 'success',
-          details: 'Task completed with 95% accuracy'
-        },
-        {
-          id: 4,
-          type: 'file_upload',
-          user: 'Sarah Wilson',
-          userId: 'user_004',
-          action: 'Uploaded assignment file',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 minutes ago
-          ip: '192.168.1.115',
-          device: 'Firefox on Linux',
-          status: 'success',
-          details: 'Uploaded project_final.zip (2.3MB)'
-        },
-        {
-          id: 5,
-          type: 'admin_action',
-          user: 'Admin User',
-          userId: 'admin_001',
-          action: 'Created new batch: Python Basics',
-          timestamp: new Date(Date.now() - 20 * 60 * 1000), // 20 minutes ago
-          ip: '192.168.1.200',
-          device: 'Chrome on Windows',
-          status: 'success',
-          details: 'Batch created with 25 capacity'
-        },
-        {
-          id: 6,
-          type: 'login',
-          user: 'Unknown User',
-          userId: 'unknown',
-          action: 'Failed login attempt',
-          timestamp: new Date(Date.now() - 25 * 60 * 1000), // 25 minutes ago
-          ip: '203.0.113.45',
-          device: 'Unknown Browser',
-          status: 'error',
-          details: 'Invalid credentials - IP blocked for 15 minutes'
-        },
-        {
-          id: 7,
-          type: 'logout',
-          user: 'Alex Chen',
-          userId: 'user_005',
-          action: 'User logged out',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
-          ip: '192.168.1.120',
-          device: 'Safari on iOS',
-          status: 'success',
-          details: 'Session ended normally'
-        }
-      ];
+      // Fetch real activities from backend
+      const activitiesResponse = await apiClient.get(`/analytics/activities?type=${typeFilter}&status=${statusFilter}&search=${searchQuery}&limit=50`);
+      setActivities(activitiesResponse.data.activities || []);
 
-      const mockActiveUsers = [
-        { id: 'user_001', name: 'John Doe', lastActive: new Date(Date.now() - 2 * 60 * 1000), status: 'online', currentPage: 'Dashboard' },
-        { id: 'user_002', name: 'Jane Smith', lastActive: new Date(Date.now() - 5 * 60 * 1000), status: 'online', currentPage: 'React Development Course' },
-        { id: 'user_003', name: 'Mike Johnson', lastActive: new Date(Date.now() - 10 * 60 * 1000), status: 'online', currentPage: 'Task Management' },
-        { id: 'user_004', name: 'Sarah Wilson', lastActive: new Date(Date.now() - 15 * 60 * 1000), status: 'idle', currentPage: 'File Upload' },
-        { id: 'user_006', name: 'Emily Davis', lastActive: new Date(Date.now() - 8 * 60 * 1000), status: 'online', currentPage: 'Learning Library' }
-      ];
+      // Fetch active users
+      const activeUsersResponse = await apiClient.get('/analytics/active-users');
+      setActiveUsers(activeUsersResponse.data || []);
 
-      const mockSystemStats = {
-        totalUsers: 48,
-        activeUsers: 5,
-        totalSessions: 127,
-        activeSessions: 5,
-        todayLogins: 23,
-        failedLogins: 2,
-        systemUptime: '15 days, 6 hours',
-        averageSessionTime: '2h 34m',
-        peakConcurrentUsers: 12,
-        systemLoad: 45 // percentage
-      };
+      // Fetch system stats
+      const statsResponse = await apiClient.get('/analytics/system-stats');
+      setSystemStats(statsResponse.data || {});
 
-      setActivities(mockActivities);
-      setActiveUsers(mockActiveUsers);
-      setSystemStats(mockSystemStats);
     } catch (error) {
       console.error('Error loading activity data:', error);
+      // Fallback to empty data
+      setActivities([]);
+      setActiveUsers([]);
+      setSystemStats({});
     } finally {
       setLoading(false);
     }
@@ -169,8 +79,13 @@ export default function ActivityMonitor() {
     switch (type) {
       case 'login': return <UserIcon className="h-5 w-5" />;
       case 'logout': return <UserIcon className="h-5 w-5" />;
-      case 'course_access': return <ComputerDesktopIcon className="h-5 w-5" />;
+      case 'project_access': return <ComputerDesktopIcon className="h-5 w-5" />;
+      case 'task_creation': return <CheckCircleIcon className="h-5 w-5" />;
       case 'task_completion': return <CheckCircleIcon className="h-5 w-5" />;
+      case 'attendance_check_in': return <ClockIcon className="h-5 w-5" />;
+      case 'attendance_check_out': return <ClockIcon className="h-5 w-5" />;
+      case 'leave_application': return <CalendarDaysIcon className="h-5 w-5" />;
+      case 'profile_update': return <UserIcon className="h-5 w-5" />;
       case 'file_upload': return <ArrowPathIcon className="h-5 w-5" />;
       case 'admin_action': return <ShieldCheckIcon className="h-5 w-5" />;
       default: return <EyeIcon className="h-5 w-5" />;
@@ -198,7 +113,8 @@ export default function ActivityMonitor() {
 
   const getFilteredActivities = () => {
     return activities.filter(activity => {
-      const matchesSearch = activity.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const userName = activity.user?.fullName || activity.user?.name || '';
+      const matchesSearch = userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            activity.action.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = typeFilter === 'all' || activity.type === typeFilter;
       const matchesStatus = statusFilter === 'all' || activity.status === statusFilter;
@@ -310,7 +226,7 @@ export default function ActivityMonitor() {
                         {user.name}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {user.id}
+                        {user.email}
                       </div>
                     </div>
                   </div>
@@ -327,10 +243,10 @@ export default function ActivityMonitor() {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                  {user.currentPage}
+                  {user.currentActivity}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                  {formatDistanceToNow(user.lastActive, { addSuffix: true })}
+                  {formatDistanceToNow(new Date(user.lastActive), { addSuffix: true })}
                 </td>
               </tr>
             ))}
@@ -369,7 +285,7 @@ export default function ActivityMonitor() {
 
       <div className="space-y-4">
         {getFilteredActivities().map((activity) => (
-          <div key={activity.id} className="flex items-start space-x-3 p-4 bg-white dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div key={activity._id} className="flex items-start space-x-3 p-4 bg-white dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
             <div className={`flex-shrink-0 p-2 rounded-full ${getStatusColor(activity.status)}`}>
               {getActivityIcon(activity.type)}
             </div>
@@ -377,22 +293,22 @@ export default function ActivityMonitor() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">
-                    {activity.user}
+                    {activity.user?.fullName || 'Unknown User'}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     {activity.action}
                   </p>
                 </div>
                 <div className="text-right text-xs text-gray-500 dark:text-gray-400">
-                  <p>{formatDistanceToNow(activity.timestamp, { addSuffix: true })}</p>
-                  <p>{format(activity.timestamp, 'HH:mm:ss')}</p>
+                  <p>{formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}</p>
+                  <p>{format(new Date(activity.createdAt), 'HH:mm:ss')}</p>
                 </div>
               </div>
               <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 <p>{activity.details}</p>
                 <p className="mt-1">
-                  <span className="font-medium">IP:</span> {activity.ip} | 
-                  <span className="font-medium"> Device:</span> {activity.device}
+                  <span className="font-medium">IP:</span> {activity.ip || 'N/A'} | 
+                  <span className="font-medium"> Device:</span> {activity.device || 'N/A'}
                 </p>
               </div>
             </div>

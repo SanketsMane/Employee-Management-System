@@ -1,0 +1,140 @@
+/* Custom Calendar Styles */
+.react-calendar {
+  width: 100% !important;
+  border: none !important;
+  border-radius: 0.75rem !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+}
+
+.react-calendar__navigation {
+  margin-bottom: 1rem !important;
+}
+
+.react-calendar__navigation button {
+  color: #374151 !important;
+  font-weight: 500 !important;
+  font-size: 1rem !important;
+  padding: 0.5rem 1rem !important;
+  border-radius: 0.5rem !important;
+  background: #f9fafb !important;
+  border: 1px solid #e5e7eb !important;
+  margin: 0 0.25rem !important;
+}
+
+.react-calendar__navigation button:hover {
+  background: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+}
+
+.react-calendar__month-view__weekdays {
+  text-align: center !important;
+  text-transform: uppercase !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  color: #6b7280 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.react-calendar__tile {
+  max-width: 100% !important;
+  padding: 0.75rem 0.25rem !important;
+  background: none !important;
+  text-align: center !important;
+  line-height: 1.2 !important;
+  font-size: 0.875rem !important;
+  border-radius: 0.5rem !important;
+  margin: 0.125rem !important;
+  border: 1px solid transparent !important;
+  transition: all 0.2s ease !important;
+}
+
+.react-calendar__tile:hover {
+  background: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+}
+
+.react-calendar__tile--active {
+  background: #3b82f6 !important;
+  color: white !important;
+  border-color: #3b82f6 !important;
+}
+
+.react-calendar__tile--now {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #92400e !important;
+  font-weight: 600 !important;
+}
+
+/* Attendance Status Classes */
+.calendar-present {
+  background: #dcfce7 !important;
+  border-color: #16a34a !important;
+  color: #15803d !important;
+}
+
+.calendar-late {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #92400e !important;
+}
+
+.calendar-absent {
+  background: #fee2e2 !important;
+  border-color: #dc2626 !important;
+  color: #b91c1c !important;
+}
+
+.calendar-half-day {
+  background: #fed7aa !important;
+  border-color: #ea580c !important;
+  color: #c2410c !important;
+}
+
+.calendar-wfh {
+  background: #dbeafe !important;
+  border-color: #2563eb !important;
+  color: #1d4ed8 !important;
+}
+
+.calendar-holiday {
+  background: #e9d5ff !important;
+  border-color: #9333ea !important;
+  color: #7c3aed !important;
+}
+
+.calendar-no-data {
+  background: #f9fafb !important;
+  border-color: #e5e7eb !important;
+  color: #9ca3af !important;
+}
+
+/* Hover effects for status tiles */
+.calendar-present:hover {
+  background: #bbf7d0 !important;
+}
+
+.calendar-late:hover {
+  background: #fde68a !important;
+}
+
+.calendar-absent:hover {
+  background: #fecaca !important;
+}
+
+.calendar-half-day:hover {
+  background: #fdba74 !important;
+}
+
+.calendar-wfh:hover {
+  background: #bfdbfe !important;
+}
+
+.calendar-holiday:hover {
+  background: #ddd6fe !important;
+}
+
+.calendar-no-data:hover {
+  background: #f3f4f6 !important;
+}

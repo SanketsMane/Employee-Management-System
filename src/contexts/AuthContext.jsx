@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import AuthService from '../services/authService';
-import DatabaseService from '../services/databaseService';
+import { authAPI } from '../services/api/auth.js';
 
 const AuthContext = createContext();
 
@@ -17,100 +16,63 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [useFirebase, setUseFirebase] = useState(false); // Toggle for Firebase vs Demo mode
 
   useEffect(() => {
-    // Check if we should use Firebase authentication
-    const shouldUseFirebase = localStorage.getItem('useFirebase') === 'true';
-    setUseFirebase(shouldUseFirebase);
+    checkAuthState();
+  }, []);
 
-    if (shouldUseFirebase) {
-      // Firebase authentication
-      const unsubscribe = AuthService.onAuthStateChanged(({ user, userProfile }) => {
-        setUser(user);
-        setUserProfile(userProfile);
-        setLoading(false);
-      });
-
-      return unsubscribe;
-    } else {
-      // Demo mode - check for demo user in localStorage
-      const demoUser = localStorage.getItem('demoUser');
-      const demoProfile = localStorage.getItem('demoProfile');
-      
-      if (demoUser && demoProfile) {
-        try {
-          const parsedUser = JSON.parse(demoUser);
-          const parsedProfile = JSON.parse(demoProfile);
-          setUser(parsedUser);
-          setUserProfile(parsedProfile);
-        } catch (error) {
-          console.error('Error parsing demo user data:', error);
-          localStorage.removeItem('demoUser');
-          localStorage.removeItem('demoProfile');
-        }
-      }
-      
-      setLoading(false);
-    }
-  }, [useFirebase]);
-
-  // Enhanced login with Firebase or Demo mode
-  const login = async (email, password, demoUserData = null) => {
+  const checkAuthState = async () => {
     try {
-      if (useFirebase && !demoUserData) {
-        // Firebase authentication
-        const { user, userProfile } = await AuthService.signIn(email, password);
-        setUser(user);
-        setUserProfile(userProfile);
-        toast.success('Login successful!');
-        return { user };
-      } else {
-        // Demo mode authentication
-        if (demoUserData) {
-          const mockUser = {
-            uid: `demo_${demoUserData.role}_${Date.now()}`,
-            email: demoUserData.email,
-            displayName: demoUserData.name,
-            role: demoUserData.role
-          };
+      if (authAPI.isAuthenticated()) {
+        const currentUser = authAPI.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          setUserProfile(currentUser);
           
-          const mockProfile = {
-            uid: mockUser.uid,
-            email: mockUser.email,
-            displayName: mockUser.displayName,
-            role: mockUser.role,
-            department: mockUser.role === 'admin' ? 'Administration' : 'Development',
-            position: mockUser.role === 'admin' ? 'System Administrator' : 'Software Developer',
-            phone: '+1234567890',
-            status: 'active',
-            joinDate: new Date(),
-            createdAt: new Date(),
-            lastLogin: new Date(),
-            permissions: mockUser.role === 'admin' ? ['all'] : ['read', 'write'],
-            avatar: null,
-            bio: `Demo ${mockUser.role} user`,
-            skills: mockUser.role === 'admin' ? ['Administration', 'Management'] : ['JavaScript', 'React'],
-            lastActivity: new Date(),
-            isOnline: true
-          };
-
-          setUser(mockUser);
-          setUserProfile(mockProfile);
-          
-          // Store in localStorage for persistence
-          localStorage.setItem('demoUser', JSON.stringify(mockUser));
-          localStorage.setItem('demoProfile', JSON.stringify(mockProfile));
-          
-          toast.success('Demo login successful!');
-          return { user: mockUser };
+          // Optionally refresh user data from server
+          try {
+            const refreshedUser = await authAPI.refreshUser();
+            setUser(refreshedUser);
+            setUserProfile(refreshedUser);
+          } catch (refreshError) {
+            console.warn('Failed to refresh user data:', refreshError);
+            // Keep using cached user data if refresh fails
+          }
         }
-
-        // For non-demo login in demo mode
-        throw new Error('Demo mode: Please use the demo login buttons or enable Firebase authentication.');
       }
     } catch (error) {
+      console.error('Auth state check error:', error);
+      // Clear invalid auth state
+      await authAPI.logout();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Login function
+  const login = async (email, password) => {
+    try {
+      const result = await authAPI.login(email, password);
+      setUser(result.user);
+      setUserProfile(result.user);
+      toast.success('Login successful!');
+      return { user: result.user };
+    } catch (error) {
       console.error('Login error:', error);
+      throw error;
+    }
+  };
+
+  // Register function
+  const register = async (userData) => {
+    try {
+      const result = await authAPI.register(userData);
+      setUser(result.user);
+      setUserProfile(result.user);
+      toast.success('Registration successful!');
+      return { user: result.user };
+    } catch (error) {
+      console.error('Registration error:', error);
       throw error;
     }
   };
@@ -118,17 +80,9 @@ export const AuthProvider = ({ children }) => {
   // Logout function
   const logout = async () => {
     try {
-      if (useFirebase && user) {
-        await AuthService.signOut(user.uid);
-      } else {
-        // Demo mode - clear localStorage
-        localStorage.removeItem('demoUser');
-        localStorage.removeItem('demoProfile');
-      }
-      
+      await authAPI.logout();
       setUser(null);
       setUserProfile(null);
-      
       toast.success('Logged out successfully');
     } catch (error) {
       console.error('Logout error:', error);
@@ -136,49 +90,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Toggle between Firebase and Demo mode
-  const toggleAuthMode = () => {
-    const newMode = !useFirebase;
-    setUseFirebase(newMode);
-    localStorage.setItem('useFirebase', newMode.toString());
-    
-    // Clear current auth state
-    setUser(null);
-    setUserProfile(null);
-    localStorage.removeItem('demoUser');
-    localStorage.removeItem('demoProfile');
-    
-    toast.success(`Switched to ${newMode ? 'Firebase' : 'Demo'} mode`);
-  };
-
   // Check if user is admin
   const isAdmin = () => {
-    return userProfile?.role === 'admin' || userProfile?.role === 'super_admin';
+    return userProfile?.role === 'admin';
   };
 
   // Check if user is authenticated
   const isAuthenticated = () => {
-    return !!user && !!userProfile;
+    return !!(user && userProfile && authAPI.isAuthenticated());
+  };
+
+  // Update user profile
+  const updateUserProfile = (updatedProfile) => {
+    setUser(updatedProfile);
+    setUserProfile(updatedProfile);
+    // Update local storage as well
+    localStorage.setItem('ems_user', JSON.stringify(updatedProfile));
   };
 
   // Check if user has specific permission
   const hasPermission = (permission) => {
     if (!userProfile) return false;
-    if (isAdmin()) return true;
-    return userProfile.permissions?.includes(permission) || false;
+    if (isAdmin()) return true; // Admins have all permissions
+    
+    // Add specific permission logic here if needed
+    return false;
   };
 
   const value = {
     user,
     userProfile,
     loading,
-    useFirebase,
     login,
+    register,
     logout,
-    toggleAuthMode,
+    updateUserProfile,
     isAdmin,
     isAuthenticated,
-    hasPermission
+    hasPermission,
+    // Remove Firebase-related props
+    useFirebase: false // Always false now
   };
 
   return (

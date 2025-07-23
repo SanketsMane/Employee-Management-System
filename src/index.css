@@ -276,6 +276,45 @@
     background: #94a3b8;
   }
   
+  /* Violet-themed scrollbar for sidebar */
+  .scrollbar-violet::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-violet::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+  }
+  
+  .scrollbar-violet::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+    transition: all 0.3s ease;
+  }
+  
+  .scrollbar-violet::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 92, 246, 0.5);
+  }
+  
+  .dark .scrollbar-violet::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.4);
+  }
+  
+  .dark .scrollbar-violet::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 92, 246, 0.6);
+  }
+  
+  /* For Firefox */
+  .scrollbar-violet {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+  }
+  
+  .dark .scrollbar-violet {
+    scrollbar-color: rgba(139, 92, 246, 0.4) transparent;
+  }
+
   /* Animation Utilities */
   .animate-fade-in {
     animation: fadeIn 0.5s ease-in-out;

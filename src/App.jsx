@@ -5,23 +5,49 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/EmployeeDashboard';
+import Dashboard from './pages/EmployeeDashboard_New';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import Attendance from './pages/Attendance';
 import Tasks from './pages/Tasks';
 import Chat from './pages/Chat';
-import Learning from './pages/Learning';
 import Profile from './pages/Profile';
+import EmployeeProjects from './pages/EmployeeProjects';
 import AdminEmployees from './pages/admin/Employees';
-import AdminBatches from './pages/admin/Batches';
+import './styles/formonex-ai.css';
+import AdminProjects from './pages/admin/Projects';
 import AdminReports from './pages/admin/Reports';
 import AdminActivityMonitor from './pages/admin/ActivityMonitor';
+import LeaveManagement from './pages/LeaveManagement';
+import AdminLeaveManagement from './pages/admin/LeaveManagement';
+import ShiftSettings from './pages/admin/ShiftSettings';
+import Worksheet from './pages/Worksheet';
+import WorksheetDashboard from './pages/admin/WorksheetDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoadingSpinner from './components/LoadingSpinner';
+import FormonexSplashScreen from './components/FormonexSplashScreen';
 import { useAuth } from './contexts/AuthContext';
+import { useState, useEffect } from 'react';
 
 function AppContent() {
   const { loading, isAuthenticated } = useAuth();
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    // Show splash screen for first-time users or on app load
+    const hasSeenSplash = localStorage.getItem('formonex-splash-seen');
+    if (hasSeenSplash) {
+      setShowSplash(false);
+    }
+  }, []);
+
+  const handleSplashComplete = () => {
+    localStorage.setItem('formonex-splash-seen', 'true');
+    setShowSplash(false);
+  };
+
+  if (showSplash) {
+    return <FormonexSplashScreen onComplete={handleSplashComplete} />;
+  }
 
   if (loading) {
     return (
@@ -48,8 +74,10 @@ function AppContent() {
         <Route path="/dashboard" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
         <Route path="/attendance" element={<ProtectedRoute><Layout><Attendance /></Layout></ProtectedRoute>} />
         <Route path="/tasks" element={<ProtectedRoute><Layout><Tasks /></Layout></ProtectedRoute>} />
+        <Route path="/projects" element={<ProtectedRoute><Layout><EmployeeProjects /></Layout></ProtectedRoute>} />
         <Route path="/chat" element={<ProtectedRoute><Layout><Chat /></Layout></ProtectedRoute>} />
-        <Route path="/learning" element={<ProtectedRoute><Layout><Learning /></Layout></ProtectedRoute>} />
+        <Route path="/worksheet" element={<ProtectedRoute><Layout><Worksheet /></Layout></ProtectedRoute>} />
+        <Route path="/leave" element={<ProtectedRoute><Layout><LeaveManagement /></Layout></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
         
         {/* Admin Routes */}
@@ -63,9 +91,19 @@ function AppContent() {
             <Layout><AdminEmployees /></Layout>
           </ProtectedRoute>
         } />
-        <Route path="/admin/batches" element={
+        <Route path="/admin/projects" element={
           <ProtectedRoute adminOnly={true}>
-            <Layout><AdminBatches /></Layout>
+            <Layout><AdminProjects /></Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/leave" element={
+          <ProtectedRoute adminOnly={true}>
+            <Layout><AdminLeaveManagement /></Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/shift-settings" element={
+          <ProtectedRoute adminOnly={true}>
+            <Layout><ShiftSettings /></Layout>
           </ProtectedRoute>
         } />
         <Route path="/admin/reports" element={
@@ -76,6 +114,11 @@ function AppContent() {
         <Route path="/admin/activity" element={
           <ProtectedRoute adminOnly={true}>
             <Layout><AdminActivityMonitor /></Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/worksheets" element={
+          <ProtectedRoute adminOnly={true}>
+            <Layout><WorksheetDashboard /></Layout>
           </ProtectedRoute>
         } />
       </Routes>

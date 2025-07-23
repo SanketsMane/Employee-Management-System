@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Footer from '../components/Footer';
 import DatabaseService from '../services/databaseService';
-import AdminDashboard from './admin/AdminDashboard';
+import { motion, AnimatePresence } from 'framer-motion';
+import { DashboardFormonexAI, EmptyStateFormonexAI, AchievementFormonexAI } from '../components/animations/FormonexAI';
+import { InteractiveElements, LoadingCharacter, FloatingAssistant, NotificationCharacter } from '../components/animations/InteractiveElements';
 import {
   ChartBarIcon,
   ClockIcon,
@@ -20,21 +22,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { format, subDays } from 'date-fns';
 import toast from 'react-hot-toast';
 
-export default function Dashboard() {
-  const { user, userProfile } = useAuth();
-  
-  // Check if user is admin and redirect to appropriate dashboard
-  const isAdmin = userProfile?.role === 'admin' || user?.email === 'admin@company.com';
-  
-  if (isAdmin) {
-    return <AdminDashboard />;
-  }
-  
-  // Employee Dashboard Component
-  return <EmployeeDashboard />;
-}
-
-function EmployeeDashboard() {
+export default function EmployeeDashboard() {
   const { user, userProfile } = useAuth();
   const [employeeStats, setEmployeeStats] = useState({
     attendanceRate: 0,
@@ -52,10 +40,33 @@ function EmployeeDashboard() {
   const [attendanceData, setAttendanceData] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // AI Character states
+  const [showWelcomeAI, setShowWelcomeAI] = useState(true);
+  const [showAchievementAI, setShowAchievementAI] = useState(false);
+  const [showNotificationAI, setShowNotificationAI] = useState(false);
+  const [aiNotification, setAiNotification] = useState(null);
 
   useEffect(() => {
     loadEmployeeData();
+    
+    // Show welcome AI character for new sessions
+    const hasSeenWelcome = sessionStorage.getItem('formonex_welcome_shown');
+    if (!hasSeenWelcome) {
+      setTimeout(() => {
+        setShowWelcomeAI(true);
+        sessionStorage.setItem('formonex_welcome_shown', 'true');
+      }, 1000);
+    }
   }, []);
+
+  // Trigger achievement AI when certain milestones are reached
+  useEffect(() => {
+    if (employeeStats.completedTasks > 0 && employeeStats.completedTasks % 10 === 0) {
+      setShowAchievementAI(true);
+      setTimeout(() => setShowAchievementAI(false), 5000);
+    }
+  }, [employeeStats.completedTasks]);
 
   const loadEmployeeData = async () => {
     setLoading(true);
@@ -207,149 +218,382 @@ function EmployeeDashboard() {
     }
   };
 
+  // AI Character interaction handlers
+  const handleAIInteraction = (scenario) => {
+    switch (scenario) {
+      case 'tasks':
+        setAiNotification({
+          type: 'info',
+          message: 'Ready to tackle your tasks? You can filter, prioritize, and track progress easily!'
+        });
+        setShowNotificationAI(true);
+        break;
+      case 'learning':
+        setAiNotification({
+          type: 'success',
+          message: 'Keep learning! Complete courses to earn certificates and boost your skills.'
+        });
+        setShowNotificationAI(true);
+        break;
+      case 'achievement':
+        setAiNotification({
+          type: 'success',
+          message: `Congratulations! You've completed ${employeeStats.completedTasks} tasks. Keep up the great work!`
+        });
+        setShowNotificationAI(true);
+        break;
+      default:
+        setAiNotification({
+          type: 'info',
+          message: 'I am here to help you navigate Formonex! Click on me anytime for tips.'
+        });
+        setShowNotificationAI(true);
+    }
+    
+    setTimeout(() => setShowNotificationAI(false), 4000);
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center relative">
+        <InteractiveElements />
+        <LoadingCharacter 
+          message={`Loading your dashboard, ${userProfile?.displayName || 'there'}...`}
+          size="xl"
+        />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Welcome back, {userProfile?.displayName || 'Employee'}!
-          </h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Here's your progress and upcoming tasks for today.
-          </p>
-        </div>
-
-        {/* Employee Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="glass-card p-6 rounded-xl border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Attendance Rate</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.attendanceRate}%</p>
-                <p className="text-sm text-green-600 dark:text-green-400">This month</p>
-              </div>
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
-                <ClockIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
-              </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative">
+      {/* Interactive Background Elements */}
+      <InteractiveElements />
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+        {/* Enhanced Header with AI Character */}
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 relative"
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <motion.h1 
+                initial={{ opacity: 0, x: -30 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2"
+              >
+                Welcome back, {userProfile?.displayName || 'Employee'}! 👋
+              </motion.h1>
+              <motion.p 
+                initial={{ opacity: 0, x: -30 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+                className="mt-2 text-lg text-gray-600 dark:text-gray-300"
+              >
+                Ready to boost your productivity at Formonex today?
+              </motion.p>
             </div>
+            
+            {/* Welcome AI Character */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.5, type: "spring", stiffness: 300 }}
+              className="ml-8"
+            >
+              <DashboardFormonexAI
+                userName={userProfile?.displayName || 'Employee'}
+                onInteraction={handleAIInteraction}
+                size="large"
+                showTips={true}
+              />
+            </motion.div>
           </div>
+        </motion.div>
 
-          <div className="glass-card p-6 rounded-xl border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Completed Tasks</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.completedTasks}</p>
-                <p className="text-sm text-blue-600 dark:text-blue-400">{employeeStats.pendingTasks} pending</p>
-              </div>
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-                <CheckCircleIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-          </div>
+        {/* AI Notifications */}
+        <AnimatePresence>
+          {showNotificationAI && aiNotification && (
+            <NotificationCharacter
+              type={aiNotification.type}
+              message={aiNotification.message}
+              onDismiss={() => setShowNotificationAI(false)}
+              autoHide={true}
+              duration={4000}
+            />
+          )}
+        </AnimatePresence>
 
-          <div className="glass-card p-6 rounded-xl border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Learning Progress</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.completedCourses}/{employeeStats.enrolledCourses}</p>
-                <p className="text-sm text-purple-600 dark:text-purple-400">Courses completed</p>
-              </div>
-              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
-                <AcademicCapIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-          </div>
+        {/* Achievement AI Character */}
+        <AnimatePresence>
+          {showAchievementAI && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.5, x: 100 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.5, x: 100 }}
+              className="fixed top-1/2 right-8 transform -translate-y-1/2 z-50"
+            >
+              <AchievementFormonexAI
+                userName={userProfile?.displayName}
+                size="xl"
+                onInteraction={() => setShowAchievementAI(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-          <div className="glass-card p-6 rounded-xl border border-white/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Certificates Earned</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{employeeStats.certificates}</p>
-                <p className="text-sm text-yellow-600 dark:text-yellow-400">This year</p>
+        {/* Enhanced Employee Stats Cards with Animations */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+        >
+          {[
+            {
+              title: 'Attendance Rate',
+              value: `${employeeStats.attendanceRate}%`,
+              subtitle: 'This month',
+              icon: ClockIcon,
+              color: 'from-green-400 to-emerald-600',
+              bgColor: 'bg-green-100 dark:bg-green-900/30'
+            },
+            {
+              title: 'Completed Tasks',
+              value: employeeStats.completedTasks,
+              subtitle: `${employeeStats.pendingTasks} pending`,
+              icon: CheckCircleIcon,
+              color: 'from-blue-400 to-blue-600',
+              bgColor: 'bg-blue-100 dark:bg-blue-900/30'
+            },
+            {
+              title: 'Learning Progress',
+              value: `${employeeStats.completedCourses}/${employeeStats.enrolledCourses}`,
+              subtitle: 'Courses completed',
+              icon: AcademicCapIcon,
+              color: 'from-purple-400 to-purple-600',
+              bgColor: 'bg-purple-100 dark:bg-purple-900/30'
+            },
+            {
+              title: 'Certificates Earned',
+              value: employeeStats.certificates,
+              subtitle: 'This year',
+              icon: TrophyIcon,
+              color: 'from-yellow-400 to-orange-600',
+              bgColor: 'bg-yellow-100 dark:bg-yellow-900/30'
+            }
+          ].map((stat, index) => (
+            <motion.div
+              key={stat.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 + index * 0.1 }}
+              whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)" }}
+              className="glass-card p-6 rounded-xl border border-white/20 relative overflow-hidden group cursor-pointer"
+              onClick={() => handleAIInteraction('dashboard')}
+            >
+              {/* Animated Background Gradient */}
+              <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-5 group-hover:opacity-10 transition-opacity duration-300`}></div>
+              
+              <div className="relative z-10 flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">{stat.title}</p>
+                  <motion.p 
+                    className="text-3xl font-bold text-gray-900 dark:text-white"
+                    initial={{ scale: 0.5 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.8 + index * 0.1, type: "spring", stiffness: 300 }}
+                  >
+                    {stat.value}
+                  </motion.p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.subtitle}</p>
+                </div>
+                <div className={`p-4 ${stat.bgColor} rounded-full group-hover:scale-110 transition-transform duration-300`}>
+                  <stat.icon className="h-8 w-8 text-gray-700 dark:text-gray-300" />
+                </div>
               </div>
-              <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-full">
-                <TrophyIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Upcoming Tasks */}
+              {/* Floating Particles */}
+              <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                {[...Array(3)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute w-1 h-1 bg-blue-400 rounded-full"
+                    style={{
+                      left: `${20 + i * 30}%`,
+                      top: `${30 + i * 20}%`
+                    }}
+                    animate={{
+                      y: [0, -20, 0],
+                      opacity: [0, 1, 0],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      delay: i * 0.3,
+                    }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* Enhanced Main Content Grid */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+          className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8"
+        >
+          {/* AI-Enhanced Upcoming Tasks */}
           <div className="lg:col-span-2">
-            <div className="glass-card p-6 rounded-xl border border-white/20">
+            <motion.div 
+              whileHover={{ scale: 1.01 }}
+              className="glass-card p-6 rounded-xl border border-white/20 relative overflow-hidden"
+            >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upcoming Tasks</h3>
-                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
+                <motion.button 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                  onClick={() => handleAIInteraction('tasks')}
+                >
                   View All
-                </button>
+                </motion.button>
               </div>
-              <div className="space-y-4">
-                {upcomingTasks.map((task) => (
-                  <div key={task.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900 dark:text-white">{task.title}</h4>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          Due: {format(task.dueDate, 'MMM dd, yyyy')}
-                        </p>
-                        <div className="mt-3">
-                          <div className="flex items-center justify-between text-sm mb-1">
-                            <span className="text-gray-600 dark:text-gray-400">Progress</span>
-                            <span className="font-medium">{task.progress}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                            <div
-                              className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${task.progress}%` }}
-                            ></div>
+              
+              {upcomingTasks.length === 0 ? (
+                <EmptyStateFormonexAI
+                  title="No tasks assigned yet!"
+                  message="Ready to get productive? Your tasks will appear here."
+                  actionText="Explore Available Tasks"
+                  onAction={() => console.log('Navigate to tasks')}
+                />
+              ) : (
+                <div className="space-y-4">
+                  {upcomingTasks.map((task, index) => (
+                    <motion.div 
+                      key={task.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 1 + index * 0.1 }}
+                      whileHover={{ scale: 1.02, backgroundColor: 'rgba(59, 130, 246, 0.05)' }}
+                      className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg cursor-pointer group relative overflow-hidden"
+                      onClick={() => handleAIInteraction('tasks')}
+                    >
+                      {/* Task Priority Indicator */}
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+                        task.priority === 'high' ? 'bg-red-500' :
+                        task.priority === 'medium' ? 'bg-yellow-500' :
+                        'bg-green-500'
+                      }`}></div>
+                      
+                      <div className="flex items-start justify-between ml-3">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {task.title}
+                          </h4>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            Due: {format(task.dueDate, 'MMM dd, yyyy')}
+                          </p>
+                          <div className="mt-3">
+                            <div className="flex items-center justify-between text-sm mb-1">
+                              <span className="text-gray-600 dark:text-gray-400">Progress</span>
+                              <span className="font-medium">{task.progress}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                              <motion.div
+                                className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${task.progress}%` }}
+                                transition={{ delay: 1.2 + index * 0.1, duration: 1, ease: "easeOut" }}
+                              />
+                            </div>
                           </div>
                         </div>
+                        <span className={`ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
+                          {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                        </span>
                       </div>
-                      <span className={`ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
-                        {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+
+                      {/* Hover Effect Particles */}
+                      <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        {[...Array(2)].map((_, i) => (
+                          <motion.div
+                            key={i}
+                            className="absolute w-1 h-1 bg-blue-400 rounded-full"
+                            style={{
+                              right: `${10 + i * 20}%`,
+                              top: `${30 + i * 30}%`
+                            }}
+                            animate={{
+                              scale: [0, 1, 0],
+                              opacity: [0, 1, 0],
+                            }}
+                            transition={{
+                              duration: 1.5,
+                              repeat: Infinity,
+                              delay: i * 0.3,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
           </div>
 
-          {/* Recent Activities */}
+          {/* Enhanced Recent Activities */}
           <div>
-            <div className="glass-card p-6 rounded-xl border border-white/20">
+            <motion.div 
+              whileHover={{ scale: 1.01 }}
+              className="glass-card p-6 rounded-xl border border-white/20"
+            >
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Recent Activities</h3>
-              <div className="space-y-4">
-                {recentActivities.map((activity) => (
-                  <div key={activity.id} className="flex items-start space-x-3">
-                    <div className="flex-shrink-0">
-                      {getActivityIcon(activity.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {activity.message}
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {format(activity.timestamp, 'h:mm a')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+              
+              {recentActivities.length === 0 ? (
+                <EmptyStateFormonexAI
+                  title="No recent activities"
+                  message="Your activities will appear here as you work!"
+                  size="small"
+                />
+              ) : (
+                <div className="space-y-4">
+                  {recentActivities.map((activity, index) => (
+                    <motion.div 
+                      key={activity.id}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 1.2 + index * 0.1 }}
+                      whileHover={{ backgroundColor: 'rgba(59, 130, 246, 0.05)' }}
+                      className="flex items-start space-x-3 p-3 rounded-lg transition-colors cursor-pointer"
+                      onClick={() => handleAIInteraction('dashboard')}
+                    >
+                      <div className="flex-shrink-0 mt-0.5">
+                        {getActivityIcon(activity.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {activity.message}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {format(activity.timestamp, 'h:mm a')}
+                        </p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Learning Progress */}
         <div className="glass-card p-6 rounded-xl border border-white/20 mb-8">
@@ -392,573 +636,52 @@ function EmployeeDashboard() {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="glass-card p-6 rounded-xl border border-white/20">
+        {/* Enhanced Quick Actions */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.4 }}
+          className="glass-card p-6 rounded-xl border border-white/20"
+        >
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            <button className="flex flex-col items-center p-4 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-800/30 dark:hover:to-blue-700/30 transition-all duration-200">
-              <ClockIcon className="h-8 w-8 text-blue-600 dark:text-blue-400 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Mark Attendance</span>
-            </button>
-            <button className="flex flex-col items-center p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg hover:from-green-100 hover:to-green-200 dark:hover:from-green-800/30 dark:hover:to-green-700/30 transition-all duration-200">
-              <CheckCircleIcon className="h-8 w-8 text-green-600 dark:text-green-400 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">View Tasks</span>
-            </button>
-            <button className="flex flex-col items-center p-4 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/30 dark:hover:to-purple-700/30 transition-all duration-200">
-              <AcademicCapIcon className="h-8 w-8 text-purple-600 dark:text-purple-400 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Browse Courses</span>
-            </button>
-            <button className="flex flex-col items-center p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg hover:from-yellow-100 hover:to-yellow-200 dark:hover:from-yellow-800/30 dark:hover:to-yellow-700/30 transition-all duration-200">
-              <ChatBubbleLeftRightIcon className="h-8 w-8 text-yellow-600 dark:text-yellow-400 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Team Chat</span>
-            </button>
-            <button className="flex flex-col items-center p-4 bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg hover:from-red-100 hover:to-red-200 dark:hover:from-red-800/30 dark:hover:to-red-700/30 transition-all duration-200">
-              <ArrowDownTrayIcon className="h-8 w-8 text-red-600 dark:text-red-400 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Download Reports</span>
-            </button>
-            <button className="flex flex-col items-center p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/20 dark:to-gray-700/20 rounded-lg hover:from-gray-100 hover:to-gray-200 dark:hover:from-gray-700/30 dark:hover:to-gray-600/30 transition-all duration-200">
-              <BellIcon className="h-8 w-8 text-gray-600 dark:text-gray-400 mb-2" />
-              <span className="text-sm font-medium text-gray-900 dark:text-white">Notifications</span>
-            </button>
+            {[
+              { icon: ClockIcon, label: 'Mark Attendance', color: 'from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20', iconColor: 'text-blue-600 dark:text-blue-400' },
+              { icon: CheckCircleIcon, label: 'View Tasks', color: 'from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20', iconColor: 'text-green-600 dark:text-green-400' },
+              { icon: AcademicCapIcon, label: 'Browse Courses', color: 'from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20', iconColor: 'text-purple-600 dark:text-purple-400' },
+              { icon: ChatBubbleLeftRightIcon, label: 'Team Chat', color: 'from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20', iconColor: 'text-yellow-600 dark:text-yellow-400' },
+              { icon: ArrowDownTrayIcon, label: 'Download Reports', color: 'from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20', iconColor: 'text-red-600 dark:text-red-400' },
+              { icon: BellIcon, label: 'Notifications', color: 'from-gray-50 to-gray-100 dark:from-gray-800/20 dark:to-gray-700/20', iconColor: 'text-gray-600 dark:text-gray-400' }
+            ].map((action, index) => (
+              <motion.button
+                key={action.label}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 1.6 + index * 0.1 }}
+                whileHover={{ 
+                  scale: 1.05, 
+                  boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
+                  y: -2
+                }}
+                whileTap={{ scale: 0.95 }}
+                className={`flex flex-col items-center p-4 bg-gradient-to-r ${action.color} rounded-lg hover:shadow-lg transition-all duration-200 group`}
+                onClick={() => handleAIInteraction('dashboard')}
+              >
+                <action.icon className={`h-8 w-8 ${action.iconColor} mb-2 group-hover:scale-110 transition-transform duration-200`} />
+                <span className="text-sm font-medium text-gray-900 dark:text-white">{action.label}</span>
+              </motion.button>
+            ))}
           </div>
-        </div>
-      </div>
+        </motion.div>
 
-      <Footer />
-    </div>
-  );
-}
-        totalEmployees: 45,
-        presentToday: 38,
-        onlineNow: 24,
-        pendingTasks: 12,
-        completedTasks: 28,
-        totalHours: 1560,
-        todayHours: 320,
-        activeBatches: 6,
-        completedCourses: 145
-      };
-
-      const mockAttendanceChart = [
-        { name: 'Mon', present: 42, absent: 3 },
-        { name: 'Tue', present: 38, absent: 7 },
-        { name: 'Wed', present: 41, absent: 4 },
-        { name: 'Thu', present: 39, absent: 6 },
-        { name: 'Fri', present: 43, absent: 2 },
-        { name: 'Sat', present: 25, absent: 20 },
-        { name: 'Sun', present: 0, absent: 45 }
-      ];
-
-      const mockTaskChart = [
-        { name: 'Completed', value: 28, color: '#10B981' },
-        { name: 'In Progress', value: 15, color: '#3B82F6' },
-        { name: 'Pending', value: 12, color: '#F59E0B' },
-        { name: 'Overdue', value: 5, color: '#EF4444' }
-      ];
-
-      const mockActivities = [
-        {
-          id: 1,
-          type: 'login',
-          user: 'John Doe',
-          description: 'logged in',
-          timestamp: new Date(Date.now() - 5 * 60 * 1000),
-          icon: '🔓'
-        },
-        {
-          id: 2,
-          type: 'task_completed',
-          user: 'Jane Smith',
-          description: 'completed task "Update Documentation"',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000),
-          icon: '✅'
-        },
-        {
-          id: 3,
-          type: 'attendance',
-          user: 'Mike Johnson',
-          description: 'marked attendance',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000),
-          icon: '⏰'
-        },
-        {
-          id: 4,
-          type: 'course_completed',
-          user: 'Sarah Wilson',
-          description: 'completed "React Fundamentals" course',
-          timestamp: new Date(Date.now() - 45 * 60 * 1000),
-          icon: '🎓'
-        },
-        {
-          id: 5,
-          type: 'batch_assigned',
-          user: 'Admin',
-          description: 'assigned 5 employees to new training batch',
-          timestamp: new Date(Date.now() - 60 * 60 * 1000),
-          icon: '👥'
-        }
-      ];
-
-      setStats(mockStats);
-      setAttendanceChart(mockAttendanceChart);
-      setTaskChart(mockTaskChart);
-      setRecentActivities(mockActivities);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const setupRealTimeListeners = () => {
-    // Listen to online users status
-    const unsubscribeStatus = getAllUsersStatus((snapshot) => {
-      if (snapshot.exists()) {
-        const statusData = snapshot.val();
-        const onlineUsersList = Object.entries(statusData)
-          .filter(([_, status]) => status.state === 'online')
-          .map(([userId, status]) => ({
-            id: userId,
-            ...status
-          }));
-        setOnlineUsers(onlineUsersList);
-        
-        // Update online count in stats
-        setStats(prev => ({
-          ...prev,
-          onlineNow: onlineUsersList.length
-        }));
-      }
-    });
-
-    // Listen to activity logs (admin only)
-    if (isAdmin()) {
-      const unsubscribeActivities = getAllActivityLogs((snapshot) => {
-        if (snapshot.exists()) {
-          const activitiesData = snapshot.val();
-          const recentActivitiesList = Object.entries(activitiesData)
-            .flatMap(([userId, activities]) => 
-              Object.entries(activities).map(([activityId, activity]) => ({
-                id: activityId,
-                userId,
-                ...activity
-              }))
-            )
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, 10);
-          
-          setRecentActivities(recentActivitiesList);
-        }
-      });
-
-      return () => {
-        unsubscribeStatus();
-        unsubscribeActivities();
-      };
-    }
-
-    return () => {
-      unsubscribeStatus();
-    };
-  };
-
-  const handleExportData = async (type) => {
-    const startDate = subDays(new Date(), 30);
-    const endDate = new Date();
-    
-    try {
-      let result;
-      switch (type) {
-        case 'attendance':
-          result = await exportAttendanceToExcel(startDate, endDate);
-          break;
-        case 'tasks':
-          result = await exportTasksToExcel(startDate, endDate);
-          break;
-        default:
-          return;
-      }
-      
-      if (result.success) {
-        toast.success(`${type} data exported successfully`);
-      } else {
-        toast.error(`Failed to export ${type} data`);
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      toast.error('Export failed');
-    }
-  };
-
-  const StatCard = ({ title, value, icon: Icon, color = 'blue', trend, subtitle }) => (
-    <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow">
-      <div className="p-5">
-        <div className="flex items-center">
-          <div className="flex-shrink-0">
-            <Icon className={`h-6 w-6 text-${color}-600 dark:text-${color}-400`} />
-          </div>
-          <div className="ml-5 w-0 flex-1">
-            <dl>
-              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                {title}
-              </dt>
-              <dd className="flex items-baseline">
-                <div className="text-2xl font-semibold text-gray-900 dark:text-white">
-                  {value}
-                </div>
-                {trend && (
-                  <div className={`ml-2 flex items-baseline text-sm font-semibold ${
-                    trend > 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {trend > 0 ? '+' : ''}{trend}%
-                  </div>
-                )}
-              </dd>
-              {subtitle && (
-                <dd className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {subtitle}
-                </dd>
-              )}
-            </dl>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const OnlineUsersWidget = () => (
-    <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Online Users ({onlineUsers.length})
-        </h3>
-        <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-sm text-gray-500 dark:text-gray-400">Live</span>
-        </div>
-      </div>
-      <div className="space-y-3 max-h-64 overflow-y-auto">
-        {onlineUsers.slice(0, 10).map((user) => (
-          <div key={user.id} className="flex items-center space-x-3">
-            <div className="relative">
-              {user.avatar ? (
-                <img
-                  src={user.avatar}
-                  alt={user.name}
-                  className="h-8 w-8 rounded-full"
-                />
-              ) : (
-                <div className="h-8 w-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
-                  <UsersIcon className="h-4 w-4 text-gray-400" />
-                </div>
-              )}
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {user.name}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                {user.department} • {user.role}
-              </p>
-            </div>
-          </div>
-        ))}
-        {onlineUsers.length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-            No users currently online
-          </p>
-        )}
-      </div>
-    </div>
-  );
-
-  const RecentActivitiesWidget = () => (
-    <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Recent Activities
-      </h3>
-      <div className="flow-root">
-        <ul className="-mb-8 max-h-64 overflow-y-auto">
-          {recentActivities.map((activity, index) => (
-            <li key={activity.id}>
-              <div className="relative pb-8">
-                {index !== recentActivities.length - 1 && (
-                  <span className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200 dark:bg-gray-700" />
-                )}
-                <div className="relative flex space-x-3">
-                  <div>
-                    <span className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center ring-8 ring-white dark:ring-gray-800 text-sm">
-                      {activity.icon}
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
-                    <div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {activity.user}
-                        </span>{' '}
-                        {activity.description}
-                      </p>
-                    </div>
-                    <div className="text-right text-sm whitespace-nowrap text-gray-500 dark:text-gray-400">
-                      <time>
-                        {format(new Date(activity.timestamp), 'MMM dd, HH:mm')}
-                      </time>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-700 rounded-2xl shadow-xl text-white p-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full"></div>
-        <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-white/5 rounded-full"></div>
-        <div className="relative z-10">
-          <h1 className="text-3xl font-bold mb-2">
-            Welcome back, {userProfile?.displayName || user?.displayName || 'User'}! 👋
-          </h1>
-          <p className="text-blue-100 text-lg mb-4">
-            {isAdmin() 
-              ? "Here's what's happening with your team today."
-              : "Track your progress and stay updated with your tasks."
-            }
-          </p>
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-sm text-blue-100">System Online</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <ClockIcon className="w-4 h-4 text-blue-200" />
-              <span className="text-sm text-blue-100">{format(new Date(), 'HH:mm')}</span>
-            </div>
-            <div className="text-sm text-blue-100">
-              {format(new Date(), 'EEEE, MMMM dd, yyyy')}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Employees"
-          value={stats.totalEmployees}
-          icon={UsersIcon}
-          color="blue"
-          trend={5}
-          subtitle="Active employees"
-        />
-        <StatCard
-          title="Online Now"
-          value={stats.onlineNow}
-          icon={CheckCircleIcon}
-          color="green"
-          subtitle="Currently active"
-        />
-        <StatCard
-          title="Present Today"
-          value={stats.presentToday}
-          icon={CalendarDaysIcon}
-          color="indigo"
-          trend={2}
-          subtitle={`Out of ${stats.totalEmployees}`}
-        />
-        <StatCard
-          title="Pending Tasks"
-          value={stats.pendingTasks}
-          icon={ExclamationTriangleIcon}
-          color="yellow"
-          trend={-8}
-          subtitle="Awaiting completion"
+        {/* Floating AI Assistant */}
+        <FloatingAssistant
+          position="bottom-right"
+          onHelp={() => handleAIInteraction('help')}
+          scenarios={['help', 'tips', 'dashboard', 'tasks', 'learning']}
         />
       </div>
 
-      {/* Secondary Stats */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Completed Tasks"
-          value={stats.completedTasks}
-          icon={CheckCircleIcon}
-          color="green"
-          subtitle="This month"
-        />
-        <StatCard
-          title="Active Batches"
-          value={stats.activeBatches}
-          icon={AcademicCapIcon}
-          color="purple"
-          subtitle="Training programs"
-        />
-        <StatCard
-          title="Total Hours"
-          value={`${stats.totalHours}h`}
-          icon={ClockIcon}
-          color="blue"
-          subtitle="This month"
-        />
-        <StatCard
-          title="Today's Hours"
-          value={`${stats.todayHours}h`}
-          icon={ClockIcon}
-          color="indigo"
-          subtitle="All employees"
-        />
-      </div>
-
-      {/* Charts Section */}
-      {isAdmin() && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Attendance Chart */}
-          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Weekly Attendance
-              </h3>
-              {hasPermission('canExportData') && (
-                <button
-                  onClick={() => handleExportData('attendance')}
-                  className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-indigo-600 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-300"
-                >
-                  <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
-                  Export
-                </button>
-              )}
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={attendanceChart}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="present" fill="#10B981" name="Present" />
-                <Bar dataKey="absent" fill="#EF4444" name="Absent" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Task Distribution Chart */}
-          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Task Distribution
-              </h3>
-              {hasPermission('canExportData') && (
-                <button
-                  onClick={() => handleExportData('tasks')}
-                  className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-indigo-600 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-300"
-                >
-                  <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
-                  Export
-                </button>
-              )}
-            </div>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={taskChart}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                >
-                  {taskChart.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* Activity Widgets */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {isAdmin() && <OnlineUsersWidget />}
-        {isAdmin() && <RecentActivitiesWidget />}
-        
-        {/* Employee-specific widgets */}
-        {!isAdmin() && (
-          <>
-            <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                My Tasks Today
-              </h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
-                    Complete project documentation
-                  </span>
-                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
-                    Pending
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">
-                    Review team proposals
-                  </span>
-                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-                    In Progress
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Learning Progress
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      React Development
-                    </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">75%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div className="bg-indigo-600 h-2 rounded-full" style={{ width: '75%' }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      UI/UX Design
-                    </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">40%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div className="bg-indigo-600 h-2 rounded-full" style={{ width: '40%' }}></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Footer */}
       <Footer />
     </div>
   );
