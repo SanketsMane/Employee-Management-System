@@ -1,0 +1,43 @@
+{
+  "name": "ems-formonex",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node api/index.js",
+    "build:production": "NODE_ENV=production vite build",
+    "test:api": "node -e \"console.log('Testing API...'); require('./api/index.js')\"",
+    "env:check": "node -e \"console.log('Environment Check:'); console.log('NODE_ENV:', process.env.NODE_ENV); console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not Set'); console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not Set');\""
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.8.0",
+    "react-hot-toast": "^2.4.0",
+    "lucide-react": "^0.263.1",
+    "recharts": "^2.5.0",
+    "date-fns": "^2.29.3",
+    "axios": "^1.3.4",
+    "express": "^4.18.2",
+    "mongoose": "^7.0.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0",
+    "cors": "^2.8.5",
+    "helmet": "^6.1.5",
+    "express-rate-limit": "^6.7.0",
+    "compression": "^1.7.4",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.28",
+    "@types/react-dom": "^18.0.11",
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.21",
+    "tailwindcss": "^3.2.7",
+    "vite": "^4.2.0"
+  }
+}
